@@ -110,18 +110,15 @@ export async function sendWhatsAppMessage(message: string, phone: string) {
 export async function updateProfile(profileData: any) {
   const tables = ['profiles', 'perfil']
   for (const table of tables) {
-    // 1. Tentar buscar se existe
     const { data: existing } = await supabase.from(table).select('id').single()
     
     if (existing) {
-      // 2. Se existe, faz update
       const { error } = await supabase.from(table).update(profileData).eq('id', existing.id)
       if (!error) {
         await revalidateAdmin()
         return { success: true }
       }
     } else {
-      // 3. Se não existe, faz insert (Upsert logic)
       const { error } = await supabase.from(table).insert([profileData])
       if (!error) {
         await revalidateAdmin()
