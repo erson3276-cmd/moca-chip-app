@@ -17,7 +17,8 @@ import {
   Save,
   Loader2
 } from 'lucide-react'
-import { addCustomer, getCustomers } from '@/app/actions/admin'
+import { addCustomer, getCustomers, toggleBlockCustomer } from '@/app/actions/admin'
+import { ShieldAlert, ShieldCheck } from 'lucide-react'
 
 export default function ClientsPage() {
   const [clients, setClients] = useState<any[]>([])
@@ -54,6 +55,18 @@ export default function ClientsPage() {
     c.name.toLowerCase().includes(search.toLowerCase()) || 
     (c.whatsapp && c.whatsapp.includes(search))
   )
+
+  const handleToggleBlock = async (id: string, name: string, currentStatus: boolean) => {
+    const action = currentStatus ? 'desbloquear' : 'bloquear'
+    if (!confirm(`Deseja realmente ${action} a cliente ${name}?`)) return
+
+    try {
+      await toggleBlockCustomer(id, !currentStatus)
+      await fetchClients()
+    } catch (error: any) {
+      alert('Erro ao alterar status: ' + error.message)
+    }
+  }
 
   const handleSaveClient = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -137,6 +150,7 @@ export default function ClientsPage() {
                   <tr className="bg-white/5 text-[10px] uppercase tracking-widest font-bold text-gray-500">
                      <th className="px-6 py-4 w-10 text-center"><CheckSquare size={14} className="mx-auto opacity-30" /></th>
                      <th className="px-6 py-4">Nome</th>
+                     <th className="px-6 py-4">Status</th>
                      <th className="px-6 py-4">Contato</th>
                      <th className="px-6 py-4">Anotação</th>
                      <th className="px-6 py-4 text-center">Última Visita</th>
@@ -157,24 +171,57 @@ export default function ClientsPage() {
                   ) : filteredClients.map((client) => (
                     <tr key={client.id} className="group hover:bg-white/5 transition-colors cursor-pointer text-white">
                        <td className="px-6 py-4 text-center"><input type="checkbox" className="rounded bg-black border-white/10 text-[#5E41FF] focus:ring-0" /></td>
-                       <td className="px-6 py-4 font-bold text-white/90 group-hover:text-white">{client.name}</td>
-                       <td className="px-6 py-4">
-                          <div className="flex items-center gap-2 text-sm text-gray-400 group-hover:text-gray-300">
-                             <MessageCircle size={14} /> {client.whatsapp}
+                        <td className="px-6 py-4 font-bold text-white/90 group-hover:text-white">
+                          <div className="flex flex-col">
+                            {client.name}
+                            <span className="text-[10px] text-gray-500 font-normal">{client.notes ? 'Ver notas' : 'Sem notas'}</span>
                           </div>
-                       </td>
-                       <td className="px-6 py-4 text-xs text-gray-500 italic max-w-xs truncate">{client.notes || '-'}</td>
-                       <td className="px-6 py-4 text-center text-sm text-gray-400 flex items-center justify-center gap-2">
-                          <Calendar size={14} className="opacity-40" />
-                          {client.last_visit ? new Date(client.last_visit).toLocaleDateString() : 'Nunca'}
-                       </td>
-                       <td className="px-6 py-4 text-right text-sm font-bold text-[#5E41FF]">R$ {client.package_balance?.toLocaleString('pt-BR') || '0,00'}</td>
-                       <td className="px-6 py-4 text-center">
-                          <span className="px-2 py-1 rounded bg-yellow-500/10 text-yellow-500 text-[10px] font-bold ring-1 ring-yellow-500/20">{client.loyalty_points || 0} pts</span>
-                       </td>
-                       <td className="px-6 py-4 text-center">
-                          <button className="p-2 text-gray-600 hover:text-white transition-colors"><MoreHorizontal size={16} /></button>
-                       </td>
+                        </td>
+                        <td className="px-6 py-4">
+                           {client.is_blocked ? (
+                             <span className="px-2 py-0.5 rounded-full bg-red-500/10 text-red-500 text-[10px] font-black uppercase tracking-widest ring-1 ring-red-500/20">Bloqueada</span>
+                           ) : (
+                             <span className="px-2 py-0.5 rounded-full bg-green-500/10 text-green-500 text-[10px] font-black uppercase tracking-widest ring-1 ring-green-500/20">Ativa</span>
+                           )}
+                        </td>
+                        <td className="px-6 py-4">
+                           <div className="flex items-center gap-2 text-sm text-gray-400 group-hover:text-gray-300">
+                              <MessageCircle size={14} /> {client.whatsapp}
+                           </div>
+                        </td>
+                        <td className="px-6 py-4 text-xs text-gray-500 italic max-w-xs truncate">{client.notes || '-'}</td>
+                        <td className="px-6 py-4 text-center text-sm text-gray-400 flex items-center justify-center gap-2">
+                           <Calendar size={14} className="opacity-40" />
+                           {client.last_visit ? new Date(client.last_visit).toLocaleDateString() : 'Nunca'}
+                        </td>
+                        <td className="px-6 py-4 text-right text-sm font-bold text-[#5E41FF]">R$ {client.package_balance?.toLocaleString('pt-BR') || '0,00'}</td>
+                        <td className="px-6 py-4 text-center">
+                           <div className="flex items-center justify-center gap-2">
+                             <span className="px-2 py-1 rounded bg-yellow-500/10 text-yellow-500 text-[10px] font-bold ring-1 ring-yellow-500/20">{client.loyalty_points || 0} pts</span>
+                           </div>
+                        </td>
+                        <td className="px-6 py-4 text-center">
+                           <div className="flex items-center justify-center gap-2">
+                              {client.is_blocked ? (
+                                <button 
+                                  onClick={(e) => { e.stopPropagation(); handleToggleBlock(client.id, client.name, true); }}
+                                  className="p-2 text-green-500 hover:bg-green-500/10 rounded-lg transition-colors border border-green-500/20 shadow-lg shadow-green-500/5 group/btn"
+                                  title="Desbloquear Cliente"
+                                >
+                                   <ShieldCheck size={16} className="group-hover/btn:scale-110 transition-transform" />
+                                </button>
+                              ) : (
+                                <button 
+                                  onClick={(e) => { e.stopPropagation(); handleToggleBlock(client.id, client.name, false); }}
+                                  className="p-2 text-red-500 hover:bg-red-500/10 rounded-lg transition-colors border border-red-500/20 shadow-lg shadow-red-500/5 group/btn"
+                                  title="Bloquear Cliente"
+                                >
+                                   <ShieldAlert size={16} className="group-hover/btn:scale-110 transition-transform" />
+                                </button>
+                              )}
+                              <button className="p-2 text-gray-600 hover:text-white transition-colors"><MoreHorizontal size={16} /></button>
+                           </div>
+                        </td>
                     </tr>
                   ))}
                </tbody>

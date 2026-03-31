@@ -178,3 +178,48 @@ export async function adminLogout() {
   const cookieStore = await cookies()
   cookieStore.delete('admin_session')
 }
+
+// --- GESTÃO DE BLOQUEIO DE CLIENTES ---
+
+export async function toggleBlockCustomer(id: string, isBlocked: boolean) {
+  const tables = ['clientes', 'customers']
+  for (const table of tables) {
+    const { error } = await supabase
+      .from(table)
+      .update({ is_blocked: isBlocked })
+      .eq('id', id)
+    
+    if (!error) {
+       await revalidateAdmin()
+       return { success: true }
+    }
+  }
+  throw new Error('Falha ao alternar status de bloqueio')
+}
+
+export async function getCustomers() {
+  const tables = ['clientes', 'customers']
+  for (const table of tables) {
+    const { data, error } = await supabase
+      .from(table)
+      .select('*')
+      .order('name')
+    if (!error && data) return data
+  }
+  return []
+}
+
+export async function addCustomer(customerData: any) {
+  const tables = ['clientes', 'customers']
+  const cleanWhatsapp = customerData.whatsapp.replace(/\D/g, '')
+  
+  for (const table of tables) {
+    const { data, error } = await supabase
+      .from(table)
+      .upsert({ ...customerData, whatsapp: cleanWhatsapp }, { onConflict: 'whatsapp' })
+      .select()
+      .single()
+    if (!error && data) return data
+  }
+  throw new Error('Falha ao adicionar cliente')
+}
