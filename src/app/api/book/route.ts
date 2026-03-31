@@ -37,7 +37,7 @@ export async function POST(request: Request) {
       }, { status: 403 })
     }
 
-    // 2. Criar o agendamento (Tentativa PT/EN)
+    // 2. Criar o agendamento (Motor Híbrido)
     let aptData = {
       customer_id: customer.id,
       service_id: serviceId,
@@ -46,21 +46,25 @@ export async function POST(request: Request) {
       status: 'agendado'
     }
 
-    let { data: appointment, error: appointmentError } = await supabase
-      .from('agendamentos')
-      .insert(aptData)
-      .select('*, servicos(*)')
-      .single()
+    const aptTables = ['agendamentos', 'appointments']
+    let appointment = null
+    let appointmentError = null
 
-    if (appointmentError) {
-       const { data: a2, error: ea2 } = await supabase
-         .from('appointments')
-         .insert(aptData)
-         .select('*, services(*)')
-         .single()
-       if (ea2) throw ea2
-       appointment = a2
+    for (const table of aptTables) {
+      const { data, error } = await supabase
+        .from(table)
+        .insert(aptData)
+        .select('*, servicos(*), services(*)')
+        .maybeSingle()
+      
+      if (!error && data) {
+        appointment = data
+        break
+      }
+      appointmentError = error
     }
+
+    if (!appointment) throw appointmentError || new Error('Não foi possível gravar o agendamento em nenhuma tabela.')
     
     // Normalizar retorno para o frontend
     const finalAppointment = {

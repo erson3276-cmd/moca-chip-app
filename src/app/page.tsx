@@ -76,31 +76,28 @@ export default function BookingPage() {
 
   useEffect(() => {
     async function fetchData() {
-      let { data: servicesData, error: sErr } = await supabase.from('services').select('*').order('name')
-      if (sErr) {
-        const { data: s2 } = await supabase.from('servicos').select('*').order('name')
-        servicesData = s2
-      }
-      if (servicesData) setServices(servicesData)
+      try {
+        const { getServices, getProfile, getAppointments } = await import('@/app/actions/admin')
+        
+        const [servicesData, profileData, aptsData] = await Promise.all([
+          getServices(),
+          getProfile ? getProfile() : (async () => {
+             // Fallback se getProfile não existir ainda ou falhar
+             const { data } = await supabase.from('profiles').select('*').maybeSingle()
+             return data || (await supabase.from('perfil').select('*').maybeSingle()).data
+          })(),
+          getAppointments()
+        ])
 
-      let { data: profileData, error: pErr } = await supabase.from('profiles').select('*').single()
-      if (pErr) {
-        const { data: p2 } = await supabase.from('perfil').select('*').single()
-        profileData = p2
-      }
-      if (profileData) setProfile(profileData)
+        if (servicesData) setServices(servicesData)
+        if (profileData) setProfile(profileData)
+        if (aptsData) setAllAppointments(aptsData)
 
-      // Carregar agendamentos para filtro
-      const tables = ['agendamentos', 'appointments']
-      for (const table of tables) {
-         const { data: apts, error: aptErr } = await supabase.from(table).select('*').neq('status', 'cancelado')
-         if (!aptErr && apts) {
-            setAllAppointments(apts)
-            break
-         }
+      } catch (err) {
+        console.error("Erro ao carregar dados iniciais:", err)
+      } finally {
+        setInitialLoading(false)
       }
-
-      setInitialLoading(false)
     }
     fetchData()
   }, [])
@@ -404,7 +401,11 @@ export default function BookingPage() {
             </div>
 
             <button 
-              onClick={handleBooking}
+              type="button"
+              onClick={() => {
+                console.log("Clique no botão Prosseguir");
+                handleBooking();
+              }}
               disabled={loading || !name || whatsapp.length < 10 || isBlocked}
               className="w-full py-5 bg-[#CBA64B] disabled:opacity-50 text-black font-black text-lg uppercase tracking-widest rounded-2xl shadow-2xl shadow-[#CBA64B]/20 hover:scale-[1.02] active:scale-[0.98] transition-all flex items-center justify-center gap-3 mt-4"
             >

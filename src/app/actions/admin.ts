@@ -404,6 +404,18 @@ export async function adminLogout() {
   await revalidateAdmin()
 }
 
+export async function getProfile() {
+  const tables = ['perfil', 'profiles']
+  for (const table of tables) {
+    const { data, error } = await supabase
+      .from(table)
+      .select('*')
+      .maybeSingle()
+    if (!error && data) return data
+  }
+  return null
+}
+
 export async function uploadProfileImage(formData: FormData) {
   const file = formData.get('file') as File
   if (!file) throw new Error('Nenhum arquivo enviado')
