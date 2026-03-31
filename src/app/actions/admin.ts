@@ -36,10 +36,12 @@ export async function addAppointment(appointmentData: any) {
     
     if (!error) {
       await revalidateAdmin()
+      revalidatePath('/admin/agenda')
+      revalidatePath('/')
       return data[0]
     }
   }
-  throw new Error('Falha ao criar agendamento')
+  throw new Error('Falha ao criar agendamento. Tente novamente.')
 }
 
 export async function updateAppointmentStatus(id: string, status: string) {
@@ -52,6 +54,8 @@ export async function updateAppointmentStatus(id: string, status: string) {
     
     if (!error) {
       await revalidateAdmin()
+      revalidatePath('/admin/agenda')
+      revalidatePath('/')
       return { success: true }
     }
   }
@@ -90,105 +94,139 @@ export async function completeAppointmentCheckout(appointmentId: string, saleDat
 // --- GESTÃO DE VENDAS (FINANCEIRO) ---
 
 export async function getSales() {
-  const { data, error } = await supabase
-    .from('vendas')
-    .select('*, customers:customer_id(name)')
-    .order('created_at', { ascending: false })
-  
-  if (error) {
-    console.error("Erro ao buscar vendas:", error)
-    return []
+  const tables = ['vendas', 'sales']
+  for (const table of tables) {
+    const { data, error } = await supabase
+      .from(table)
+      .select('*, customers:customer_id(name)')
+      .order('created_at', { ascending: false })
+    
+    if (!error && data) return data
   }
-  return data || []
+  return []
 }
 
 export async function addSale(saleData: any) {
-  const { data, error } = await supabase
-    .from('vendas')
-    .insert([saleData])
-    .select()
-  
-  if (error) throw new Error('Falha ao registrar venda: ' + error.message)
-  
-  await revalidateAdmin()
-  return data[0]
+  const tables = ['vendas', 'sales']
+  for (const table of tables) {
+    const { data, error } = await supabase
+      .from(table)
+      .insert([saleData])
+      .select()
+    
+    if (!error) {
+      await revalidateAdmin()
+      revalidatePath('/admin/vendas')
+      revalidatePath('/admin/relatorios')
+      return data[0]
+    }
+  }
+  throw new Error('Falha ao registrar venda. Verifique se as tabelas "vendas" ou "sales" existem.')
 }
 
 export async function updateSale(id: string, saleData: any) {
-  const { data, error } = await supabase
-    .from('vendas')
-    .update(saleData)
-    .eq('id', id)
-    .select()
+  const tables = ['vendas', 'sales']
+  for (const table of tables) {
+    const { data, error } = await supabase
+      .from(table)
+      .update(saleData)
+      .eq('id', id)
+      .select()
 
-  if (error) throw new Error('Falha ao atualizar venda: ' + error.message)
-  
-  await revalidateAdmin()
-  return data[0]
+    if (!error && data) {
+      await revalidateAdmin()
+      revalidatePath('/admin/vendas')
+      return data[0]
+    }
+  }
+  throw new Error('Falha ao atualizar venda.')
 }
 
 export async function deleteSale(id: string) {
-  const { error } = await supabase
-    .from('vendas')
-    .delete()
-    .eq('id', id)
+  const tables = ['vendas', 'sales']
+  for (const table of tables) {
+    const { error } = await supabase
+      .from(table)
+      .delete()
+      .eq('id', id)
 
-  if (error) throw new Error('Falha ao deletar venda: ' + error.message)
-  
-  await revalidateAdmin()
-  return { success: true }
+    if (!error) {
+      await revalidateAdmin()
+      revalidatePath('/admin/vendas')
+      revalidatePath('/admin/relatorios')
+      return { success: true }
+    }
+  }
+  throw new Error('Falha ao deletar venda.')
 }
 
 // --- GESTÃO DE DESPESAS ---
 
 export async function getExpenses() {
-  const { data, error } = await supabase
-    .from('despesas')
-    .select('*')
-    .order('date', { ascending: false })
-  
-  if (error) {
-    console.error("Erro ao buscar despesas:", error)
-    return []
+  const tables = ['despesas', 'expenses']
+  for (const table of tables) {
+    const { data, error } = await supabase
+      .from(table)
+      .select('*')
+      .order('date', { ascending: false })
+    
+    if (!error && data) return data
   }
-  return data || []
+  return []
 }
 
 export async function addExpense(expenseData: any) {
-  const { data, error } = await supabase
-    .from('despesas')
-    .insert([expenseData])
-    .select()
-  
-  if (error) throw new Error('Falha ao registrar despesa: ' + error.message)
-  
-  await revalidateAdmin()
-  return data[0]
+  const tables = ['despesas', 'expenses']
+  for (const table of tables) {
+    const { data, error } = await supabase
+      .from(table)
+      .insert([expenseData])
+      .select()
+    
+    if (!error) {
+      await revalidateAdmin()
+      revalidatePath('/admin/despesas')
+      revalidatePath('/admin/relatorios')
+      return data[0]
+    }
+  }
+  throw new Error('Falha ao registrar despesa.')
 }
 
 export async function updateExpense(id: string, expenseData: any) {
-  const { data, error } = await supabase
-    .from('despesas')
-    .update(expenseData)
-    .eq('id', id)
-    .select()
+  const tables = ['despesas', 'expenses']
+  for (const table of tables) {
+    const { data, error } = await supabase
+      .from(table)
+      .update(expenseData)
+      .eq('id', id)
+      .select()
 
-  if (error) throw new Error('Falha ao atualizar despesa: ' + error.message)
-  
-  await revalidateAdmin()
-  return data[0]
+    if (!error && data) {
+      await revalidateAdmin()
+      revalidatePath('/admin/despesas')
+      return data[0]
+    }
+  }
+  throw new Error('Falha ao atualizar despesa.')
 }
 
 export async function deleteExpense(id: string) {
-  const { error } = await supabase
-    .from('despesas')
-    .delete()
-    .eq('id', id)
+  const tables = ['despesas', 'expenses']
+  for (const table of tables) {
+    const { error } = await supabase
+      .from(table)
+      .delete()
+      .eq('id', id)
 
-  if (error) throw new Error('Falha ao deletar despesa: ' + error.message)
-  
-  await revalidateAdmin()
-  return { success: true }
+    if (!error) {
+      await revalidateAdmin()
+      revalidatePath('/admin/despesas')
+      revalidatePath('/admin/relatorios')
+      return { success: true }
+    }
+  }
+  throw new Error('Falha ao deletar despesa.')
 }
 
 // --- GESTÃO DE SERVIÇOS ---
@@ -269,14 +307,23 @@ export async function sendManagerTalkMessage(phone: string, text: string) {
 
 export async function testEvolutionConnection() {
   try {
-    const url = `${process.env.EVOLUTION_API_URL}/instance/connectionState/${process.env.EVOLUTION_INSTANCE}`
+    const api_url = process.env.EVOLUTION_API_URL?.replace(/\/$/, '') // Remove barra final se houver
+    const instance = process.env.EVOLUTION_INSTANCE
+    const apikey = process.env.EVOLUTION_API_KEY || ''
+
+    if (!api_url || !instance) {
+       return { success: false, error: 'Variáveis de ambiente EVOLUTION_API_URL ou EVOLUTION_INSTANCE não configuradas.' }
+    }
+
+    const url = `${api_url}/instance/connectionState/${instance}`
     const response = await fetch(url, {
-      headers: { 'apikey': process.env.EVOLUTION_API_KEY || '' }
+      method: 'GET',
+      headers: { 'apikey': apikey },
+      cache: 'no-store'
     })
+    
     const data = await response.json()
     
-    // O painel espera .status (ex: 'open', 'CONNECTED', 'close') 
-    // e opcionalmente .qrcode (se o status for 'close')
     return {
       success: response.ok,
       status: data.instance?.state || 'close',
@@ -284,7 +331,7 @@ export async function testEvolutionConnection() {
     }
   } catch (error) {
     console.error('Erro ao testar Evolution:', error)
-    return { success: false, status: 'close', qrcode: null }
+    return { success: false, status: 'close', qrcode: null, error: 'Não foi possível conectar à Evolution API. Verifique a URL.' }
   }
 }
 
@@ -365,14 +412,15 @@ export async function uploadProfileImage(formData: FormData) {
   const fileName = `profile-${Math.random()}.${fileExt}`
   const filePath = `public/${fileName}`
 
-  // 1. Upload para o Supabase Storage
+  // 1. Upload para o Supabase Storage com Bypass de Erros
   const { data, error } = await supabase.storage
     .from('salon-assets')
     .upload(filePath, file)
 
   if (error) {
-     // Se o bucket não existir, tentamos criar ou avisar
-     throw new Error('Erro ao subir imagem: ' + error.message)
+     // Log no console da Vercel para debug
+     console.error("ERRO UPLOAD STORAGE:", error.message)
+     throw new Error('Erro ao subir imagem para o Storage: ' + error.message + '. Verifique se o bucket "salon-assets" é público/existe.')
   }
 
   // 2. Pegar URL Pública
