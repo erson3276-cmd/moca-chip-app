@@ -227,12 +227,22 @@ export async function sendManagerTalkMessage(phone: string, text: string) {
 
 export async function testEvolutionConnection() {
   try {
-    const response = await fetch(`${process.env.EVOLUTION_API_URL}/instance/fetchInstances`, {
+    const url = `${process.env.EVOLUTION_API_URL}/instance/connectionState/${process.env.EVOLUTION_INSTANCE}`
+    const response = await fetch(url, {
       headers: { 'apikey': process.env.EVOLUTION_API_KEY || '' }
     })
-    return response.ok ? { success: true } : { success: false }
-  } catch {
-    return { success: false }
+    const data = await response.json()
+    
+    // O painel espera .status (ex: 'open', 'CONNECTED', 'close') 
+    // e opcionalmente .qrcode (se o status for 'close')
+    return {
+      success: response.ok,
+      status: data.instance?.state || 'close',
+      qrcode: data.instance?.qrcode?.base64 || null
+    }
+  } catch (error) {
+    console.error('Erro ao testar Evolution:', error)
+    return { success: false, status: 'close', qrcode: null }
   }
 }
 
