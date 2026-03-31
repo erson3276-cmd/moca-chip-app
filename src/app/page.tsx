@@ -1,14 +1,14 @@
 'use client'
 
 import { useEffect, useState, useRef } from 'react'
-import { Calendar as CalendarIcon, Clock, ChevronRight, Sparkles, CheckCircle2, ChevronLeft, User, MapPin, Star } from 'lucide-react'
+import { Calendar as CalendarIcon, Clock, ChevronRight, Sparkles, CheckCircle2, ChevronLeft, User, MapPin, Star, ShieldAlert, MessageCircle } from 'lucide-react'
 import { supabase, type Service, type Profile } from '@/lib/supabase'
 import { format, addDays, startOfToday, isSameDay, eachDayOfInterval } from 'date-fns'
 import { ptBR } from 'date-fns/locale'
 
 export default function BookingPage() {
   const [services, setServices] = useState<Service[]>([])
-  const [profile, setProfile] = useState<Profile | null>(null)
+  const [profile, setProfile] = useState<Profile | any>(null)
   const [step, setStep] = useState(1) // 1: Serviços, 2: Profissional, 3: Horário, 4: Dados, 5: Sucesso
   const [selectedService, setSelectedService] = useState<Service | null>(null)
   const [selectedDate, setSelectedDate] = useState(addDays(startOfToday(), 1))
@@ -21,6 +21,7 @@ export default function BookingPage() {
   const [loading, setLoading] = useState(false)
   const [initialLoading, setInitialLoading] = useState(true)
   const [allAppointments, setAllAppointments] = useState<any[]>([])
+  const [isBlocked, setIsBlocked] = useState(false)
 
   const dateList = eachDayOfInterval({
     start: startOfToday(),
@@ -37,8 +38,11 @@ export default function BookingPage() {
     const tarde: string[] = []
     const noite: string[] = []
     
-    const [startHour] = profile.opening_time.split(':').map(Number)
-    const [endHour] = profile.closing_time.split(':').map(Number)
+    // Fallbacks para horários
+    const opening = profile.opening_time || '09:00'
+    const closing = profile.closing_time || '18:00'
+    const [startHour] = opening.split(':').map(Number)
+    const [endHour] = closing.split(':').map(Number)
     const interval = profile.slot_interval || 30
     const svcDuration = selectedService?.duration_minutes || 30
 
@@ -54,7 +58,6 @@ export default function BookingPage() {
         const hasConflict = allAppointments.some(apt => {
            const aptStart = new Date(apt.start_time)
            const aptEnd = new Date(apt.end_time)
-           // Verifica se os intervalos se sobrepõem
            return slotStart < aptEnd && slotEnd > aptStart
         })
 
@@ -87,7 +90,7 @@ export default function BookingPage() {
       }
       if (profileData) setProfile(profileData)
 
-      // Carregar agendamentos do dia para filtro de disponibilidade
+      // Carregar agendamentos para filtro
       const tables = ['agendamentos', 'appointments']
       for (const table of tables) {
          const { data: apts, error: aptErr } = await supabase.from(table).select('*').neq('status', 'cancelado')
@@ -101,6 +104,23 @@ export default function BookingPage() {
     }
     fetchData()
   }, [])
+
+  // Verificação de Bloqueio em Tempo Real
+  useEffect(() => {
+    const checkBlocked = async () => {
+      const cleanWhatsapp = whatsapp.replace(/\D/g, '')
+      if (cleanWhatsapp.length >= 10) {
+        const { validateVIP } = await import('@/app/actions/admin')
+        const result = await validateVIP(cleanWhatsapp)
+        if (result.status === 'blocked') {
+          setIsBlocked(true)
+        } else {
+          setIsBlocked(false)
+        }
+      }
+    }
+    checkBlocked()
+  }, [whatsapp])
 
   const handleBooking = async () => {
     if (!name || !whatsapp || !selectedService || !selectedTime) return
@@ -122,12 +142,19 @@ export default function BookingPage() {
       })
       const result = await response.json()
       if (result.success) setStep(5)
+      else if (response.status === 403) setIsBlocked(true)
       else alert('Erro ao agendar: ' + result.error)
     } catch (error) {
       alert('Erro de conexão.')
     } finally {
       setLoading(false)
     }
+  }
+
+  const handleContactSuanne = () => {
+    const message = encodeURIComponent('Olá Suanne! Tentei realizar um agendamento e meu número consta como indisponível. Poderia me ajudar?')
+    const phone = profile?.whatsapp_number || '5521984755539'
+    window.open(`https://wa.me/${phone}?text=${message}`, '_blank')
   }
 
   if (initialLoading) {
@@ -138,18 +165,71 @@ export default function BookingPage() {
     )
   }
 
+  // TELA DE BLOQUEIO (LOCK SCREEN)
+  if (isBlocked) {
+    return (
+      <main className="min-h-screen bg-[#0A0A0A] text-[#FAFAFA] flex items-center justify-center p-6">
+        <div className="max-w-sm w-full animate-in zoom-in-95 duration-500">
+           <div className="bg-[#141414] border border-red-500/20 rounded-[3rem] p-10 text-center shadow-2xl space-y-8 backdrop-blur-xl">
+              <div className="relative">
+                 <div className="w-32 h-32 mx-auto rounded-full border-4 border-red-500/20 overflow-hidden shadow-2xl relative z-10">
+                    <img 
+                      src={profile?.image_url || 'https://images.unsplash.com/photo-1560066984-138dadb4c035?auto=format&fit=crop&q=80&w=200&h=200'} 
+                      alt={profile?.professional_name} 
+                      className="w-full h-full object-cover grayscale opacity-50"
+                    />
+                 </div>
+                 <div className="absolute top-0 right-1/2 translate-x-1/2 -mt-4 bg-red-600 p-2 rounded-full shadow-lg z-20 border-4 border-[#141414]">
+                    <ShieldAlert className="w-6 h-6 text-white" />
+                 </div>
+              </div>
+
+              <div className="space-y-2">
+                 <h2 className="text-2xl font-black italic tracking-tighter uppercase">Acesso Restrito</h2>
+                 <p className="text-gray-400 text-sm leading-relaxed">
+                    Olá! No momento, o agendamento automático não está disponível para este número de WhatsApp.
+                 </p>
+              </div>
+
+              <div className="pt-4 border-t border-white/5">
+                 <p className="text-[10px] uppercase font-black tracking-[0.2em] text-[#CBA64B] mb-6">Para liberar seu agendamento:</p>
+                 <button 
+                   onClick={handleContactSuanne}
+                   className="w-full flex items-center justify-center gap-3 py-5 bg-[#CBA64B] text-black rounded-2xl font-black text-xs uppercase tracking-widest hover:scale-105 active:scale-95 transition-all shadow-xl shadow-[#CBA64B]/10 group"
+                 >
+                    <MessageCircle className="w-5 h-5 group-hover:scale-110 transition-transform" />
+                    Falar com Suanne
+                 </button>
+              </div>
+              
+              <button 
+                onClick={() => { setIsBlocked(false); setStep(1); setWhatsapp(''); }}
+                className="text-[10px] text-gray-600 uppercase font-bold tracking-widest hover:text-gray-400 underline underline-offset-4"
+              >
+                Tentar outro número
+              </button>
+           </div>
+        </div>
+      </main>
+    )
+  }
+
   return (
     <main className="min-h-screen bg-[#0A0A0A] text-[#FAFAFA] font-sans pb-24 selection:bg-[#CBA64B]/30">
       {/* Colavo Style Hero */}
       <header className="relative w-full p-6 pt-12 text-center bg-gradient-to-b from-[#111] to-[#0A0A0A]">
         <div className="w-20 h-20 mx-auto bg-[#18181a] border border-[#CBA64B]/30 rounded-full flex items-center justify-center mb-4 overflow-hidden shadow-xl ring-4 ring-[#CBA64B]/10">
-           <User className="w-10 h-10 text-[#CBA64B]" />
+           {profile?.image_url ? (
+             <img src={profile.image_url} alt={profile.name} className="w-full h-full object-cover" />
+           ) : (
+             <User className="w-10 h-10 text-[#CBA64B]" />
+           )}
         </div>
         <h1 className="text-2xl font-semibold tracking-tight leading-none mb-1">{profile?.name || 'Moça Chic'}</h1>
-        <div className="flex items-center justify-center gap-1 text-xs text-gray-500 font-medium mb-4">
+        <p className="text-[#CBA64B] text-[10px] font-black uppercase tracking-[0.3em] mb-3">{profile?.professional_name || 'Atendimento Premium'}</p>
+        
+        <div className="flex items-center justify-center gap-1 text-[10px] text-gray-500 font-bold uppercase tracking-widest mb-4">
            <MapPin className="w-3 h-3" /> <span>{profile?.address || 'Endereço não configurado'}</span>
-           <span className="mx-1 opacity-30">•</span>
-           <Star className="w-3 h-3 text-[#CBA64B] fill-[#CBA64B]" /> <span>Novo Salão</span>
         </div>
         
         {/* Step Indicator */}
@@ -164,7 +244,7 @@ export default function BookingPage() {
         {/* ETAPA 1: SELEÇÃO DE SERVIÇO */}
         {step === 1 && (
           <div className="animate-in fade-in slide-in-from-bottom-4 duration-500">
-            {/* Categorias (Colavo Style) */}
+            {/* Categorias */}
             <div className="flex items-center gap-2 overflow-x-auto pb-4 no-scrollbar">
               {categories.map(cat => (
                 <button 
@@ -189,7 +269,7 @@ export default function BookingPage() {
                        <span className="text-[#CBA64B]">R$ {service.price.toLocaleString('pt-BR')}</span>
                     </div>
                   </div>
-                  <button onClick={() => { setSelectedService(service); setStep(2); }} className="px-5 py-2 rounded-xl bg-white/5 border border-white/10 hover:border-[#CBA64B]/50 hover:text-[#CBA64B] transition-all font-semibold text-sm">Escoher</button>
+                  <button onClick={() => { setSelectedService(service); setStep(2); }} className="px-5 py-2 rounded-xl bg-white/5 border border-white/10 hover:border-[#CBA64B]/50 hover:text-[#CBA64B] transition-all font-semibold text-sm">Escolher</button>
                 </div>
               ))}
             </div>
@@ -201,12 +281,16 @@ export default function BookingPage() {
           <div className="animate-in fade-in slide-in-from-right-4 duration-500 py-6">
             <h2 className="text-xl font-medium mb-6">Selecione o Profissional</h2>
             <div onClick={() => setStep(3)} className="p-4 rounded-3xl bg-[#141414] border border-[#CBA64B]/30 flex items-center gap-4 cursor-pointer hover:bg-[#18181a] group transition-all ring-1 ring-transparent hover:ring-[#CBA64B]/20">
-               <div className="w-16 h-16 bg-[#18181a] rounded-full flex items-center justify-center flex-shrink-0 border border-white/10 group-hover:border-[#CBA64B]/50 transition-colors">
-                  <User className="w-8 h-8 text-[#CBA64B]" />
+               <div className="w-16 h-16 bg-[#18181a] rounded-full flex items-center justify-center flex-shrink-0 border border-white/10 group-hover:border-[#CBA64B]/50 transition-colors overflow-hidden">
+                  {profile?.image_url ? (
+                    <img src={profile.image_url} alt={profile.professional_name} className="w-full h-full object-cover" />
+                  ) : (
+                    <User className="w-8 h-8 text-[#CBA64B]" />
+                  )}
                </div>
                <div className="flex-1">
-                  <p className="font-bold text-lg">{profile?.name || 'Profissional'}</p>
-                  <p className="text-sm text-gray-400">Atendimento Premium</p>
+                  <p className="font-bold text-lg">{profile?.professional_name || profile?.name || 'Profissional'}</p>
+                  <p className="text-sm text-gray-400">Especialista Moça Chic</p>
                </div>
                <ChevronRight className="w-5 h-5 text-gray-500 group-hover:text-[#CBA64B]" />
             </div>
@@ -214,11 +298,9 @@ export default function BookingPage() {
           </div>
         )}
 
-
-        {/* ETAPA 3: DATA E HORA (MODO COLAVO) */}
+        {/* ETAPA 3: DATA E HORA */}
         {step === 3 && (
           <div className="animate-in fade-in slide-in-from-right-4 duration-500 py-4">
-             {/* Data Scroll Horizontal */}
              <div className="flex gap-3 overflow-x-auto pb-6 no-scrollbar snap-x">
                 {dateList.map(date => (
                   <button 
@@ -233,7 +315,6 @@ export default function BookingPage() {
              </div>
 
              <div className="mt-4 flex flex-col gap-8">
-               {/* Seção Manhã */}
                {slots.manha.length > 0 && (
                  <div>
                     <h4 className="text-xs font-bold text-gray-500 uppercase tracking-[0.2em] mb-4 flex items-center gap-2">🌄 Manhã</h4>
@@ -244,8 +325,6 @@ export default function BookingPage() {
                     </div>
                  </div>
                )}
-
-                {/* Seção Tarde */}
                 {slots.tarde.length > 0 && (
                  <div>
                     <h4 className="text-xs font-bold text-gray-500 uppercase tracking-[0.2em] mb-4 flex items-center gap-2">☀️ Tarde</h4>
@@ -256,8 +335,6 @@ export default function BookingPage() {
                     </div>
                  </div>
                )}
-
-                {/* Seção Noite */}
                 {slots.noite.length > 0 && (
                  <div>
                     <h4 className="text-xs font-bold text-gray-500 uppercase tracking-[0.2em] mb-4 flex items-center gap-2">🌙 Noite</h4>
@@ -276,54 +353,81 @@ export default function BookingPage() {
         {/* ETAPA 4: REVISÃO E CONFIRMAÇÃO */}
         {step === 4 && (
           <div className="animate-in fade-in slide-in-from-right-4 duration-500 py-4 flex flex-col gap-6">
-            <div className="p-6 rounded-3xl bg-[#141414] border border-[#CBA64B]/20">
-               <h3 className="text-xs font-bold text-[#CBA64B] uppercase tracking-widest mb-4">Resumo da Reserva</h3>
+            <div className="p-6 rounded-3xl bg-[#141414] border border-[#CBA64B]/20 shadow-xl">
+               <h3 className="text-[10px] font-black text-[#CBA64B] uppercase tracking-[0.3em] mb-6">Resumo da Reserva</h3>
                <div className="flex flex-col gap-4">
                   <div className="flex justify-between items-center">
                      <div>
-                        <p className="text-lg font-bold">{selectedService?.name}</p>
-                        <p className="text-sm text-gray-500">{format(selectedDate, "dd 'de' MMMM", { locale: ptBR })} às {selectedTime}</p>
+                        <p className="text-xl font-bold text-white/90">{selectedService?.name}</p>
+                        <p className="text-sm text-gray-400 mt-1">{format(selectedDate, "dd 'de' MMMM", { locale: ptBR })} às <span className="text-white font-bold">{selectedTime}</span></p>
                      </div>
-                     <p className="text-xl font-bold text-[#CBA64B]">R$ {selectedService?.price}</p>
+                     <p className="text-2xl font-black text-[#CBA64B]">R$ {selectedService?.price}</p>
                   </div>
-                  <div className="pt-4 border-t border-white/5 flex items-center gap-3">
-                     <div className="w-10 h-10 bg-white/5 rounded-full flex items-center justify-center"><User className="w-5 h-5 text-gray-500" /></div>
-                     <p className="text-sm">Profissional: <span className="font-bold text-white">Bia Barros</span></p>
+                  <div className="pt-6 mt-2 border-t border-white/5 flex items-center gap-4">
+                     <div className="w-12 h-12 bg-[#18181a] rounded-full flex items-center justify-center border border-white/10 overflow-hidden">
+                        {profile?.image_url ? (
+                          <img src={profile.image_url} alt={profile.professional_name} className="w-full h-full object-cover" />
+                        ) : (
+                          <User className="w-6 h-6 text-gray-700" />
+                        )}
+                     </div>
+                     <div>
+                        <p className="text-[10px] text-gray-500 uppercase font-black tracking-widest">Profissional Especialista</p>
+                        <p className="text-sm font-bold text-white">{profile?.professional_name || profile?.name || 'Suanne Chagas'}</p>
+                     </div>
                   </div>
                </div>
             </div>
 
-            <div className="flex flex-col gap-4">
-               <div className="flex flex-col gap-2">
-                  <label className="text-[10px] items-center gap-1 uppercase tracking-widest font-bold text-gray-600 block px-1">Seu Nome completo</label>
-                  <input type="text" value={name} onChange={(e) => setName(e.target.value)} placeholder="Como quer ser chamada?" className="w-full p-4 rounded-xl bg-[#141414] border border-white/5 focus:border-[#CBA64B]/50 outline-none transition-all" />
+            <div className="flex flex-col gap-5">
+               <div className="space-y-2">
+                  <label className="text-[10px] items-center gap-1 uppercase tracking-widest font-black text-gray-600 block px-2">Seu Nome completo</label>
+                  <input 
+                    type="text" 
+                    value={name} 
+                    onChange={(e) => setName(e.target.value)} 
+                    placeholder="Como quer ser chamada?" 
+                    className="w-full p-4 rounded-2xl bg-[#141414] border border-white/5 focus:border-[#CBA64B]/50 outline-none transition-all text-white font-medium placeholder:text-gray-700" 
+                  />
                </div>
-               <div className="flex flex-col gap-2">
-                  <label className="text-[10px] items-center gap-1 uppercase tracking-widest font-bold text-gray-600 block px-1">Número do WhatsApp</label>
-                  <input type="tel" value={whatsapp} onChange={(e) => setWhatsapp(e.target.value)} placeholder="(21) 98455-9663" className="w-full p-4 rounded-xl bg-[#141414] border border-white/5 focus:border-[#CBA64B]/50 outline-none transition-all" />
+               <div className="space-y-2">
+                  <label className="text-[10px] items-center gap-1 uppercase tracking-widest font-black text-gray-600 block px-2">Número do WhatsApp</label>
+                  <input 
+                    type="tel" 
+                    value={whatsapp} 
+                    onChange={(e) => setWhatsapp(e.target.value)} 
+                    placeholder="(21) 98455-9663" 
+                    className={`w-full p-4 rounded-2xl bg-[#141414] border border-white/5 focus:border-[#CBA64B]/50 outline-none transition-all text-white font-medium placeholder:text-gray-700 ${isBlocked ? 'border-red-500/50' : ''}`} 
+                  />
+                  {isBlocked && <p className="text-[10px] text-red-500 font-bold uppercase tracking-widest ml-2">Agendamento restrito para este número.</p>}
                </div>
             </div>
 
             <button 
               onClick={handleBooking}
-              disabled={loading || !name || !whatsapp}
-              className="w-full py-5 bg-[#CBA64B] disabled:opacity-50 text-black font-bold text-lg rounded-2xl shadow-xl shadow-[#CBA64B]/10 hover:brightness-110 active:scale-[0.98] transition-all flex items-center justify-center gap-2 mt-4"
+              disabled={loading || !name || whatsapp.length < 10 || isBlocked}
+              className="w-full py-5 bg-[#CBA64B] disabled:opacity-50 text-black font-black text-lg uppercase tracking-widest rounded-2xl shadow-2xl shadow-[#CBA64B]/20 hover:scale-[1.02] active:scale-[0.98] transition-all flex items-center justify-center gap-3 mt-4"
             >
-              {loading ? <div className="w-6 h-6 border-3 border-black border-t-transparent rounded-full animate-spin" /> : 'Confirmar Agendamento'}
+              {loading ? <div className="w-6 h-6 border-4 border-black border-t-transparent rounded-full animate-spin" /> : (
+                <>
+                   PROSSEGUIR <ChevronRight className="w-5 h-5" />
+                </>
+              )}
             </button>
-            <button onClick={() => setStep(3)} className="text-sm text-center text-gray-500 hover:text-white">Alterar data ou hora</button>
+            <button onClick={() => setStep(3)} className="text-xs mt-2 text-center text-gray-600 uppercase font-bold tracking-widest hover:text-white transition-colors">Alterar data ou hora</button>
           </div>
         )}
 
-        {/* ETAPA 5: SUCESSO COVALO STYLE */}
+        {/* ETAPA 5: SUCESSO */}
         {step === 5 && (
           <div className="flex flex-col items-center justify-center py-24 text-center animate-in zoom-in duration-700">
-            <div className="w-24 h-24 bg-[#CBA64B]/10 rounded-full flex items-center justify-center mb-8 ring-8 ring-[#CBA64B]/5">
+            <div className="w-24 h-24 bg-[#CBA64B]/10 rounded-full flex items-center justify-center mb-8 ring-8 ring-[#CBA64B]/5 relative">
               <CheckCircle2 className="w-12 h-12 text-[#CBA64B]" />
+              <div className="absolute inset-0 rounded-full border-2 border-[#CBA64B] animate-ping opacity-20" />
             </div>
-            <h2 className="text-3xl font-bold mb-4 tracking-tight">Pedido Enviado!</h2>
-            <p className="text-gray-400 mb-12 max-w-[300px] text-lg font-light leading-relaxed">Sua reserva foi enviada com sucesso. Verifique seu <span className="text-white font-medium">WhatsApp</span> em instantes.</p>
-            <button onClick={() => { setStep(1); setName(''); setWhatsapp(''); }} className="px-10 py-4 bg-[#141414] border border-white/10 rounded-2xl text-[#CBA64B] font-bold hover:bg-[#CBA64B]/5 transition-all shadow-lg">Fazer novo agendamento</button>
+            <h2 className="text-3xl font-black italic tracking-tighter uppercase mb-4">Pedido Enviado!</h2>
+            <p className="text-gray-400 mb-12 max-w-[300px] text-lg font-light leading-relaxed">Sua reserva foi enviada com sucesso. Verifique seu <span className="text-white font-bold">WhatsApp</span> em instantes para a confirmação.</p>
+            <button onClick={() => { setStep(1); setName(''); setWhatsapp(''); }} className="px-12 py-5 bg-[#141414] border border-white/10 rounded-2xl text-[#CBA64B] font-black text-xs uppercase tracking-[0.2em] hover:bg-[#CBA64B]/5 transition-all shadow-2xl">Novo agendamento</button>
           </div>
         )}
       </div>

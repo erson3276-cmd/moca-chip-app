@@ -2,6 +2,7 @@
 
 import { supabaseAdmin as supabase } from '@/lib/supabaseAdmin'
 import { revalidatePath } from 'next/cache'
+import { cookies } from 'next/headers'
 
 /**
  * Utilitário para revalidar cache do Admin
@@ -250,4 +251,109 @@ export async function sendWhatsAppMessage(text: string, number: string) {
 // Compatibilidade com página ManagerTalk
 export async function sendManagerTalkMessage(text: string, number: string) {
    return sendWhatsAppMessage(text, number)
+}
+
+// --- GESTÃO E PERFIL ---
+export async function getProfile() {
+  const tables = ['profiles', 'perfil']
+  for (const table of tables) {
+    const { data, error } = await supabase.from(table).select('*').single()
+    if (!error && data) return data
+  }
+  // Fallback caso não exista perfil
+  return { 
+    name: 'Moça Chic', 
+    whatsapp: '5521984755539', 
+    professional_name: 'Suanne Chagas', 
+    address: 'Avenida João Ribeiro 444 Loja D, Pilares RJ',
+    image_url: ''
+  }
+}
+
+export async function updateProfile(data: any) {
+  const tables = ['profiles', 'perfil']
+  
+  for (const table of tables) {
+    const profileData = { 
+      ...data, 
+      professional_name: data.professional_name || 'Suanne Chagas' 
+    }
+
+    // Tentar encontrar o registro existente para atualizar ou inserir
+    const { data: existing } = await supabase.from(table).select('id').maybeSingle()
+    
+    if (existing?.id) {
+      // Atualiza o existente
+      const { id, ...updateData } = profileData
+      const { error } = await supabase.from(table).update(updateData).eq('id', existing.id)
+      if (!error) {
+        await revalidateAdmin()
+        return { success: true }
+      }
+    } else {
+      // Cria novo registro
+      const { error } = await supabase.from(table).insert([profileData])
+      if (!error) {
+        await revalidateAdmin()
+        return { success: true }
+      }
+    }
+  }
+  throw new Error('Falha ao atualizar perfil no Supabase. Verifique se as colunas (address, professional_name, image_url) existem.')
+}
+
+
+// --- SEGURANÇA VIP E BLOQUEIO ---
+export async function validateVIP(whatsapp: string) {
+  const tables = ['clientes', 'customers']
+  const cleanWhatsapp = whatsapp.replace(/\D/g, '')
+
+  for (const table of tables) {
+    const { data, error } = await supabase
+      .from(table)
+      .select('id, name, is_blocked')
+      .eq('whatsapp', cleanWhatsapp)
+      .single()
+
+    if (error || !data) continue
+    if (data.is_blocked) {
+       return { status: 'blocked', message: 'Indisponível no momento' }
+    }
+    return { status: 'ok', client: data }
+  }
+  return { status: 'not_found', message: 'Cliente não cadastrado' }
+}
+
+export async function toggleBlockCustomer(id: string, blocked: boolean) {
+  const tables = ['clientes', 'customers']
+  for (const table of tables) {
+    const { error } = await supabase.from(table).update({ is_blocked: blocked }).eq('id', id)
+    if (!error) {
+       await revalidateAdmin()
+       return { success: true }
+    }
+  }
+  return { success: false }
+}
+
+
+// --- AUTENTICA��O ADMINISTRATIVA ---
+export async function adminLogin(password: string) {
+  const adminPwd = process.env.ADMIN_PASSWORD || 'moca2024'
+  if (password === adminPwd) {
+    const cookieStore = await cookies()
+    cookieStore.set('admin_session', 'true', {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === 'production',
+      sameSite: 'lax',
+      maxAge: 60 * 60 * 24 * 7
+    })
+    return { success: true }
+  }
+  return { success: false, error: 'Senha incorreta' }
+}
+
+export async function adminLogout() {
+  const cookieStore = await cookies()
+  cookieStore.delete('admin_session')
 }

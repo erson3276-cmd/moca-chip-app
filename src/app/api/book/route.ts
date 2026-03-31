@@ -5,6 +5,24 @@ import { supabaseAdmin as supabase } from '@/lib/supabaseAdmin'
 export async function POST(request: Request) {
   try {
     const { name, whatsapp, serviceId, startTime, endTime } = await request.json()
+    const cleanWhatsapp = whatsapp.replace(/\D/g, '')
+
+    // 0. Verificação de Bloqueio (Segurança VIP)
+    const tables = ['clientes', 'customers']
+    for (const table of tables) {
+      const { data: blockedData } = await supabase
+        .from(table)
+        .select('is_blocked')
+        .eq('whatsapp', cleanWhatsapp)
+        .maybeSingle()
+      
+      if (blockedData?.is_blocked) {
+        return NextResponse.json({ 
+          success: false, 
+          error: 'Agendamento indisponível para este número. Entre em contato com Suanne Chagas.' 
+        }, { status: 403 })
+      }
+    }
 
     // 1. Criar ou buscar o cliente no CRM (Tentativa PT/EN)
     let customerData = { name, whatsapp }

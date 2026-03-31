@@ -49,19 +49,18 @@ export default function SettingsPage() {
     e.preventDefault()
     setSaving(true)
     
-    const { error } = await supabase
-      .from('profiles')
-      .update(profile)
-      .eq('id', profile.id)
-
-    if (error) {
-       await supabase.from('perfil').update(profile).eq('id', profile.id)
+    try {
+       const { updateProfile: updateSrv } = await import('@/app/actions/admin')
+       await updateSrv(profile)
+       setSuccess(true)
+       setTimeout(() => setSuccess(false), 3000)
+    } catch (error: any) {
+       alert('Erro ao salvar: ' + error.message)
+    } finally {
+       setSaving(false)
     }
-
-    setSuccess(true)
-    setTimeout(() => setSuccess(false), 3000)
-    setSaving(false)
   }
+
 
   const handleTestVPS = async () => {
     setQrLoading(true)
@@ -136,6 +135,35 @@ export default function SettingsPage() {
                    className="w-full p-4 rounded-2xl bg-[#141414] border border-white/5 focus:border-[#5E41FF]/50 outline-none transition-all font-medium text-white"
                  />
               </div>
+
+               <div className="space-y-2">
+                  <label className="text-[10px] uppercase tracking-widest font-bold text-gray-500 px-1">Nome da Profissional</label>
+                  <div className="relative">
+                     <Settings className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-500" size={18} />
+                     <input 
+                       type="text" 
+                       placeholder="Ex: Suanne Chagas"
+                       value={profile?.professional_name || ''} 
+                       onChange={(e) => setProfile({...profile, professional_name: e.target.value})}
+                       className="w-full pl-12 pr-4 py-4 rounded-2xl bg-[#141414] border border-white/5 focus:border-[#5E41FF]/50 outline-none transition-all font-medium text-white"
+                     />
+                  </div>
+               </div>
+
+               <div className="space-y-2">
+                  <label className="text-[10px] uppercase tracking-widest font-bold text-gray-500 px-1">Foto de Perfil (URL)</label>
+                  <div className="relative">
+                     <ImageIcon className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-500" size={18} />
+                     <input 
+                       type="text" 
+                       placeholder="Link da imagem"
+                       value={profile?.image_url || ''} 
+                       onChange={(e) => setProfile({...profile, image_url: e.target.value})}
+                       className="w-full pl-12 pr-4 py-4 rounded-2xl bg-[#141414] border border-white/5 focus:border-[#5E41FF]/50 outline-none transition-all font-medium text-white"
+                     />
+                  </div>
+               </div>
+
               <div className="md:col-span-2 space-y-2">
                  <label className="text-[10px] uppercase tracking-widest font-bold text-gray-500 px-1">Endereço Completo</label>
                  <div className="relative">
@@ -143,6 +171,8 @@ export default function SettingsPage() {
                     <input 
                       type="text" 
                       placeholder="Rua, Número, Bairro, Cidade"
+                      value={profile?.address || ''} 
+                      onChange={(e) => setProfile({...profile, address: e.target.value})}
                       className="w-full pl-12 pr-4 py-4 rounded-2xl bg-[#141414] border border-white/5 focus:border-[#5E41FF]/50 outline-none transition-all font-medium text-white"
                     />
                  </div>

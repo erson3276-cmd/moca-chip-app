@@ -22,6 +22,7 @@ export interface Customer {
   whatsapp: string
   notes?: string
   birthday?: string
+  is_blocked?: boolean // Campo de segurança VIP
   created_at: string
 }
 
@@ -42,6 +43,8 @@ export interface Appointment {
 export interface Profile {
   id: string
   name: string
+  professional_name?: string // Nome da profissional (Suanne Chagas)
+  image_url?: string // Foto do Salão/Profissional
   whatsapp_number: string
   opening_time: string
   closing_time: string
@@ -49,4 +52,3 @@ export interface Profile {
   address?: string
   updated_at: string
 }
-
