@@ -126,7 +126,7 @@ export default function BookingPage() {
     const endTime = new Date(startTime.getTime() + selectedService.duration_minutes * 60000)
 
     try {
-      const { processTemplate, getProfile, sendWhatsAppMessage } = await import('@/app/actions/admin')
+      const { getProfile, sendWhatsAppMessage } = await import('@/app/actions/admin')
       const response = await fetch('/api/book', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
