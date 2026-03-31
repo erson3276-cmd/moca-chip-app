@@ -22,7 +22,7 @@ const TEMPLATES = {
   falta: `[ [Nome do salão] ]\n\nOh não! Você perdeu o horário do seu agendamento conosco 🙁\n\nOlá, viemos te informar que você perdeu seu agendamento conosco.\n\nDetalhes do agendamento:\n■ [Data e hora da marcação]\n■ [Nome do serviço], [Duração]\n■ Profissional : [Nome do profissional]\n■ Endereço : [Endereço do salão]\n\n🔗 Ver mais detalhes :\n[Link]`
 }
 
-function processTemplate(templateKey: keyof typeof TEMPLATES, data: any) {
+export function processTemplate(templateKey: keyof typeof TEMPLATES, data: any) {
   let text = TEMPLATES[templateKey]
   const opening = data.profile?.opening_time || '09:00'
   
