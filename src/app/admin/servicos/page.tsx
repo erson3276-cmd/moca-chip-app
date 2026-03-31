@@ -55,11 +55,11 @@ export default function ServicesPage() {
     fetchServices()
   }, [])
 
-  const categories = ['Todos', ...Array.from(new Set(services.map(s => s.category).filter(Boolean)))]
+  const categories = ['Todos', ...Array.from(new Set((services || []).map(s => s?.category).filter(Boolean)))]
   
-  const filteredServices = services.filter(s => {
-    const matchesSearch = s.name.toLowerCase().includes(search.toLowerCase())
-    const matchesCategory = selectedCategory === 'Todos' || s.category === selectedCategory
+  const filteredServices = (services || []).filter(s => {
+    const matchesSearch = (s?.name || '').toLowerCase().includes(search.toLowerCase())
+    const matchesCategory = selectedCategory === 'Todos' || s?.category === selectedCategory
     return matchesSearch && matchesCategory
   })
 

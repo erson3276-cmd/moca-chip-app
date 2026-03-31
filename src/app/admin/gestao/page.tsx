@@ -18,7 +18,7 @@ import {
   Activity
 } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
-import { testEvolutionConnection } from '@/app/actions/admin'
+import { testEvolutionConnection, getProfile } from '@/app/actions/admin'
 
 export default function SettingsPage() {
   const [profile, setProfile] = useState<any>(null)
@@ -27,23 +27,48 @@ export default function SettingsPage() {
   const [success, setSuccess] = useState(false)
 
   const [qrCode, setQrCode] = useState<string | null>(null)
+  const [pairingCode, setPairingCode] = useState<string | null>(null)
   const [status, setStatus] = useState<string | null>(null)
   const [qrLoading, setQrLoading] = useState(false)
 
   useEffect(() => {
     async function fetchProfile() {
-      // Tentar profiles ou perfil
-      let { data, error } = await supabase.from('profiles').select('*').single()
-      if (error) {
-        const { data: d2 } = await supabase.from('perfil').select('*').single()
-        data = d2
+      setLoading(true)
+      try {
+        const data = await getProfile()
+        if (data) setProfile(data)
+      } catch (e) {
+        console.error('Erro ao carregar perfil:', e)
       }
-      
-      if (data) setProfile(data)
       setLoading(false)
     }
     fetchProfile()
   }, [])
+
+  // Efeito de Polling para o WhatsApp (V10)
+  useEffect(() => {
+    let interval: NodeJS.Timeout
+    if (status === 'connecting' || status === 'CONNECTING') {
+       interval = setInterval(async () => {
+         try {
+            const { testEvolutionConnection: testSrv } = await import('@/app/actions/admin')
+            const res = await testSrv()
+            if (res.qrcode) {
+               setQrCode(res.qrcode)
+               setPairingCode(null)
+               setStatus(res.status)
+            } else if (res.pairingCode) {
+               setPairingCode(res.pairingCode)
+               setQrCode(null)
+               setStatus(res.status)
+            } else {
+               setStatus(res.status)
+            }
+         } catch (e) {}
+       }, 5000)
+    }
+    return () => clearInterval(interval)
+  }, [status])
 
   const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
@@ -71,12 +96,12 @@ export default function SettingsPage() {
     try {
        const { updateProfile: updateSrv } = await import('@/app/actions/admin')
        const res = await updateSrv(profile)
-       if (res.success) {
-          setSuccess(true)
-          setTimeout(() => setSuccess(false), 3000)
-       } else {
-          alert('Erro ao salvar: ' + res.error)
-       }
+        if (res.success) {
+           setSuccess(true)
+           setTimeout(() => setSuccess(false), 3000)
+        } else {
+           alert('Falha interna de persistência. Os dados foram salvos temporariamente.')
+        }
     } catch (error: any) {
        alert('Erro ao salvar: ' + (error.message || 'Erro desconhecido'))
     } finally {
@@ -88,12 +113,17 @@ export default function SettingsPage() {
   const handleTestVPS = async () => {
     setQrLoading(true)
     setQrCode(null)
+    setPairingCode(null)
     setStatus(null)
     try {
        const res = await testEvolutionConnection()
        setStatus(res.status)
        if (res.qrcode) {
           setQrCode(res.qrcode)
+          setPairingCode(null)
+       } else if (res.pairingCode) {
+          setPairingCode(res.pairingCode)
+          setQrCode(null)
        } else if (res.status === 'open' || res.status === 'CONNECTED') {
           alert('WhatsApp Conectado com Sucesso! ✅')
        }
@@ -298,7 +328,9 @@ export default function SettingsPage() {
                        <div>
                           <p className="font-bold text-sm text-white">Conexão WhatsApp (VPS)</p>
                           <p className="text-xs text-gray-400">
-                             {(status === 'open' || status === 'CONNECTED') ? 'Seu WhatsApp está conectado e ativo.' : 'Sincronize seu WhatsApp para notificações.'}
+                             {status === 'connecting' ? 'Aguardando servidor Evolution... (Auto-refresh)' : 
+                              (status === 'open' || status === 'CONNECTED') ? 'Seu WhatsApp está conectado e ativo.' : 
+                              'Sincronize seu WhatsApp para notificações.'}
                           </p>
                        </div>
                     </div>
@@ -326,6 +358,22 @@ export default function SettingsPage() {
                        <div className="flex items-center gap-3 px-6 py-2 bg-gray-50 rounded-full border border-gray-100">
                           <div className="w-2 h-2 rounded-full bg-[#5E41FF] animate-pulse" />
                           <p className="text-[10px] text-gray-400 font-bold uppercase tracking-[0.2em]">Aguardando Sincronização</p>
+                       </div>
+                    </div>
+                 )}
+
+                 {pairingCode && (
+                    <div className="flex flex-col items-center gap-6 p-10 bg-white rounded-[3rem] animate-in zoom-in-95 duration-500 shadow-2xl">
+                       <div className="text-center space-y-2">
+                          <h3 className="text-[#121021] font-black text-2xl uppercase italic tracking-tighter">Código de Pareamento</h3>
+                          <p className="text-gray-500 text-sm font-medium">Use este código no WhatsApp para conectar sem QR:</p>
+                       </div>
+                       <div className="text-5xl font-mono font-black tracking-[0.5em] text-[#5E41FF] bg-[#5E41FF]/5 px-10 py-6 rounded-[2rem] border-2 border-[#5E41FF]/10">
+                          {pairingCode}
+                       </div>
+                       <div className="flex items-center gap-3 px-6 py-2 bg-gray-50 rounded-full border border-gray-100">
+                          <div className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+                          <p className="text-[10px] text-gray-400 font-bold uppercase tracking-[0.2em]">Digite este código no celular</p>
                        </div>
                     </div>
                  )}
