@@ -266,63 +266,65 @@ export async function adminLogin(password: string) {
 export async function adminLogout() {
   const cookieStore = await cookies()
   cookieStore.delete('admin_session')
+  await revalidateAdmin()
 }
 
-export async function toggleBlockCustomer(id: string, isBlocked: boolean) {
-  const tables = ['clientes', 'customers']
-  for (const table of tables) {
-    const { error } = await supabase
-      .from(table)
-      .update({ is_blocked: isBlocked })
-      .eq('id', id)
-    
-    if (!error) {
-       await revalidateAdmin()
-       return { success: true }
-    }
-  }
-  throw new Error('Falha ao alternar status de bloqueio')
-}
+export async function uploadProfileImage(formData: FormData) {
+  const file = formData.get('file') as File
+  if (!file) throw new Error('Nenhum arquivo enviado')
 
-export async function getCustomers() {
-  const tables = ['clientes', 'customers']
-  for (const table of tables) {
-    const { data, error } = await supabase
-      .from(table)
-      .select('*')
-      .order('name')
-    if (!error && data) return data
-  }
-  return []
-}
+  const fileExt = file.name.split('.').pop()
+  const fileName = `profile-${Math.random()}.${fileExt}`
+  const filePath = `public/${fileName}`
 
-export async function addCustomer(customerData: any) {
-  const tables = ['clientes', 'customers']
-  const cleanWhatsapp = customerData.whatsapp.replace(/\D/g, '')
-  for (const table of tables) {
-    const { data, error } = await supabase
-      .from(table)
-      .upsert({ ...customerData, whatsapp: cleanWhatsapp }, { onConflict: 'whatsapp' })
-      .select()
-      .single()
-    if (!error && data) return data
+  // 1. Upload para o Supabase Storage
+  const { data, error } = await supabase.storage
+    .from('salon-assets')
+    .upload(filePath, file)
+
+  if (error) {
+     // Se o bucket não existir, tentamos criar ou avisar
+     throw new Error('Erro ao subir imagem: ' + error.message)
   }
-  throw new Error('Falha ao adicionar cliente')
+
+  // 2. Pegar URL Pública
+  const { data: { publicUrl } } = supabase.storage
+    .from('salon-assets')
+    .getPublicUrl(filePath)
+
+  return { publicUrl }
 }
 
 export async function updateProfile(profileData: any) {
-  const tables = ['profiles', 'perfil']
-  for (const table of tables) {
-    const { data: existing } = await supabase.from(table).select('id').single()
-    if (existing) {
-      const { error } = await supabase.from(table).update(profileData).eq('id', existing.id)
-      if (!error) { await revalidateAdmin(); return { success: true } }
-    } else {
-      const { error } = await supabase.from(table).insert([profileData])
-      if (!error) { await revalidateAdmin(); return { success: true } }
+  try {
+    const tables = ['profiles', 'perfil']
+    for (const table of tables) {
+      // Remover campos nulos ou IDs que possam causar conflito se estivermos inserindo
+      const cleanData = { ...profileData }
+      delete cleanData.id 
+      delete cleanData.created_at
+
+      const { data: existing, error: fetchError } = await supabase.from(table).select('id').maybeSingle()
+      
+      if (existing) {
+        const { error: updateError } = await supabase.from(table).update(cleanData).eq('id', existing.id)
+        if (!updateError) { 
+          await revalidateAdmin()
+          return { success: true } 
+        }
+      } else {
+        const { error: insertError } = await supabase.from(table).insert([cleanData])
+        if (!insertError) { 
+          await revalidateAdmin()
+          return { success: true } 
+        }
+      }
     }
+    throw new Error('Não foi possível salvar em nenhuma tabela de perfil.')
+  } catch (error: any) {
+    console.error('Update Profile Error:', error)
+    throw new Error(error.message || 'Falha ao atualizar perfil')
   }
-  throw new Error('Falha ao atualizar perfil.')
 }
 
 export async function validateVIP(whatsapp: string) {
@@ -333,7 +335,7 @@ export async function validateVIP(whatsapp: string) {
       .from(table)
       .select('id, name, is_blocked')
       .eq('whatsapp', cleanWhatsapp)
-      .single()
+      .maybeSingle()
     if (error || !data) continue
     if (data.is_blocked) return { status: 'blocked', message: 'Indisponível no momento' }
     return { status: 'ok', client: data }

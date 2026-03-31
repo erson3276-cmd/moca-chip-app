@@ -45,12 +45,32 @@ export default function SettingsPage() {
     fetchProfile()
   }, [])
 
+  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+
+    setSaving(true)
+    try {
+       const fd = new FormData()
+       fd.append('file', file)
+       const { uploadProfileImage } = await import('@/app/actions/admin')
+       const { publicUrl } = await uploadProfileImage(fd)
+       setProfile({ ...profile, image_url: publicUrl })
+       alert('Foto carregada com sucesso! Clique em Salvar para confirmar.')
+    } catch (error: any) {
+       alert('Erro no upload: ' + error.message)
+    } finally {
+       setSaving(false)
+    }
+  }
+
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault()
     setSaving(true)
     
     try {
        const { updateProfile: updateSrv } = await import('@/app/actions/admin')
+       // Garantir o nome correto na persistência se necessário
        await updateSrv(profile)
        setSuccess(true)
        setTimeout(() => setSuccess(false), 3000)
@@ -150,19 +170,30 @@ export default function SettingsPage() {
                   </div>
                </div>
 
-               <div className="space-y-2">
-                  <label className="text-[10px] uppercase tracking-widest font-bold text-gray-500 px-1">Foto de Perfil (URL)</label>
-                  <div className="relative">
-                     <ImageIcon className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-500" size={18} />
-                     <input 
-                       type="text" 
-                       placeholder="Link da imagem"
-                       value={profile?.image_url || ''} 
-                       onChange={(e) => setProfile({...profile, image_url: e.target.value})}
-                       className="w-full pl-12 pr-4 py-4 rounded-2xl bg-[#141414] border border-white/5 focus:border-[#5E41FF]/50 outline-none transition-all font-medium text-white"
-                     />
-                  </div>
-               </div>
+                <div className="space-y-2">
+                   <label className="text-[10px] uppercase tracking-widest font-bold text-gray-500 px-1">Foto de Perfil (Galeria ou PC)</label>
+                   <div className="flex items-center gap-4">
+                      <div className="w-16 h-16 rounded-2xl bg-[#141414] border border-white/5 flex items-center justify-center overflow-hidden">
+                         {profile?.image_url ? (
+                           <img src={profile.image_url} alt="Preview" className="w-full h-full object-cover" />
+                         ) : (
+                           <ImageIcon className="text-gray-600" size={24} />
+                         )}
+                      </div>
+                      <label className="flex-1 cursor-pointer">
+                         <div className="flex items-center justify-center gap-2 p-4 rounded-2xl bg-[#141414] border border-dashed border-white/10 hover:border-[#5E41FF]/50 transition-all text-xs font-bold text-gray-400">
+                            <ImageIcon size={16} />
+                            CLIQUE PARA ALTERAR FOTO
+                         </div>
+                         <input 
+                           type="file" 
+                           accept="image/*"
+                           onChange={handleFileChange}
+                           className="hidden"
+                         />
+                      </label>
+                   </div>
+                </div>
 
               <div className="md:col-span-2 space-y-2">
                  <label className="text-[10px] uppercase tracking-widest font-bold text-gray-500 px-1">Endereço Completo</label>

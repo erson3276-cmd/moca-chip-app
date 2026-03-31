@@ -72,16 +72,18 @@ export async function POST(request: Request) {
     }
 
     // 3. Disparar WhatsApp via Evolution API (Fase Final)
-    const serviceName = appointment.servicos?.name || appointment.services?.name || 'Serviço'
+    const serviceName = finalAppointment.services?.name || 'Serviço'
     const dateStr = new Date(startTime).toLocaleDateString('pt-BR')
     const timeStr = new Date(startTime).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })
     
-    const message = `Olá *${name}*! ✨\n\nSeu agendamento de *${serviceName}* no Moça Chic foi recebido com sucesso! ✅\n\n🗓️ *Data:* ${dateStr}\n🕒 *Horário:* ${timeStr}\n\nTe esperamos para te deixar ainda mais linda! 🌸`
+    const message = `Olá *${name}*! ✨\n\nSeu agendamento de *${serviceName}* no *Moça Chiq* foi recebido com sucesso! ✅\n\n🗓️ *Data:* ${dateStr}\n🕒 *Horário:* ${timeStr}\n\nTe esperamos para te deixar ainda mais linda! 🌸`
 
-    const { sendWhatsAppMessage } = await import('@/app/actions/admin')
-    sendWhatsAppMessage(message, whatsapp) // Não espera o WhatsApp para confirmar o agendamento
-
-
+    try {
+      const { sendWhatsAppMessage } = await import('@/app/actions/admin')
+      await sendWhatsAppMessage(message, cleanWhatsapp)
+    } catch (waError) {
+      console.error('Erro ao enviar mensagem de WhatsApp:', waError)
+    }
 
     return NextResponse.json({ success: true, appointment: finalAppointment })
   } catch (error: any) {

@@ -160,30 +160,33 @@ export default function AgendaPage() {
   return (
     <div className="max-w-[1600px] mx-auto space-y-6 animate-in fade-in duration-500 pb-10">
       {/* Header */}
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-6 bg-[#121021] p-6 rounded-[2.5rem] border border-white/5 shadow-2xl">
-        <div className="flex items-center gap-6">
+      <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-6 bg-[#121021] p-4 lg:p-6 rounded-[2.5rem] border border-white/5 shadow-2xl">
+        <div className="flex flex-col sm:flex-row items-start sm:items-center gap-4 lg:gap-6">
           <h1 className="text-2xl font-black italic uppercase tracking-tighter text-white">Agenda</h1>
-          <div className="flex items-center bg-black/40 rounded-2xl p-1 border border-white/5">
-            <button onClick={() => setView('dia')} className={`px-6 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${view === 'dia' ? 'bg-[#5E41FF] text-white shadow-lg' : 'text-gray-500 hover:text-gray-300'}`}>Dia</button>
-            <button onClick={() => setView('semana')} className={`px-6 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${view === 'semana' ? 'bg-[#5E41FF] text-white shadow-lg' : 'text-gray-500 hover:text-gray-300'}`}>Semana</button>
+          <div className="flex items-center bg-black/40 rounded-2xl p-1 border border-white/5 w-full sm:w-auto">
+            <button onClick={() => setView('dia')} className={`flex-1 sm:flex-none px-4 lg:px-6 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${view === 'dia' ? 'bg-[#5E41FF] text-white shadow-lg' : 'text-gray-500 hover:text-gray-300'}`}>Dia</button>
+            <button onClick={() => setView('semana')} className={`flex-1 sm:flex-none px-4 lg:px-6 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${view === 'semana' ? 'bg-[#5E41FF] text-white shadow-lg' : 'text-gray-500 hover:text-gray-300'}`}>Semana</button>
           </div>
         </div>
 
-        <div className="flex items-center gap-4">
-          <div className="flex items-center gap-2 bg-black/40 border border-white/5 p-1 rounded-2xl">
+        <div className="flex flex-col sm:flex-row items-center gap-4">
+          <div className="flex items-center gap-2 bg-black/40 border border-white/5 p-1 rounded-2xl w-full sm:w-auto justify-between sm:justify-start">
             <button onClick={() => setCurrentDate(addDays(currentDate, -7))} className="p-3 text-gray-500"><ChevronLeft size={20} /></button>
-            <span className="text-[11px] font-black uppercase tracking-[0.2em] px-4 min-w-[200px] text-center text-white">
+            <span className="text-[10px] lg:text-[11px] font-black uppercase tracking-[0.1em] lg:tracking-[0.2em] px-2 lg:px-4 min-w-[140px] lg:min-w-[200px] text-center text-white truncate">
               {format(start, "dd MMM", { locale: ptBR })} - {format(end, "dd MMM yyyy", { locale: ptBR })}
             </span>
             <button onClick={() => setCurrentDate(addDays(currentDate, 7))} className="p-3 text-gray-500"><ChevronRight size={20} /></button>
           </div>
-          <button onClick={() => setIsModalOpen(true)} className="flex items-center gap-3 px-8 py-4 bg-[#5E41FF] text-white rounded-2xl text-[11px] font-black uppercase tracking-widest shadow-xl transition-all"><Plus size={18} /> Novo Agendamento</button>
+          <button onClick={() => setIsModalOpen(true)} className="flex items-center justify-center gap-3 w-full sm:w-auto px-6 lg:px-8 py-4 bg-[#5E41FF] text-white rounded-2xl text-[10px] lg:text-[11px] font-black uppercase tracking-widest shadow-xl transition-all"><Plus size={18} /> Novo Agendamento</button>
         </div>
       </div>
 
-      {/* Grid Calendário */}
-      <div className="bg-[#121021] border border-white/5 rounded-[3rem] overflow-hidden shadow-2xl flex flex-col h-[800px]">
-        <div className="flex border-b border-white/5 bg-black/20">
+      {/* Grid Calendário - Scroll Horizontal em Mobile */}
+      <div className="bg-[#121021] border border-white/5 rounded-[2rem] lg:rounded-[3rem] overflow-hidden shadow-2xl flex flex-col h-[700px] lg:h-[800px]">
+        <div className="overflow-x-auto no-scrollbar flex flex-col h-full">
+          <div className="min-w-[900px] flex flex-col h-full"> 
+            {/* Header da Grade */}
+            <div className="flex border-b border-white/5 bg-black/20 sticky top-0 z-20">
           <div className="w-24 shrink-0 p-4 border-r border-white/5 flex items-center justify-center"><Clock size={18} className="text-[#5E41FF]" /></div>
           <div className="flex-1 grid grid-cols-7">
             {days.map((day, idx) => (
@@ -268,9 +271,11 @@ export default function AgendaPage() {
                   })}
               </div>
             ))}
-          </div>
         </div>
       </div>
+    </div>
+  </div>
+</div>
 
 
       {/* MODAL CHECKOUT - COLAVO STYLE */}

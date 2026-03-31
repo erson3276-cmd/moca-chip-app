@@ -225,11 +225,11 @@ export default function BookingPage() {
              <User className="w-10 h-10 text-[#CBA64B]" />
            )}
         </div>
-        <h1 className="text-2xl font-semibold tracking-tight leading-none mb-1">{profile?.name || 'Moça Chic'}</h1>
-        <p className="text-[#CBA64B] text-[10px] font-black uppercase tracking-[0.3em] mb-3">{profile?.professional_name || 'Atendimento Premium'}</p>
+        <h1 className="text-2xl font-semibold tracking-tight leading-none mb-1">{profile?.name || 'Moça Chiq'}</h1>
+        <p className="text-[#CBA64B] text-[10px] font-black uppercase tracking-[0.3em] mb-3">{profile?.professional_name || 'Suanne Chagas'}</p>
         
         <div className="flex items-center justify-center gap-1 text-[10px] text-gray-500 font-bold uppercase tracking-widest mb-4">
-           <MapPin className="w-3 h-3" /> <span>{profile?.address || 'Endereço não configurado'}</span>
+           <MapPin className="w-3 h-3" /> <span className="truncate max-w-[200px]">{profile?.address || 'Endereço não configurado'}</span>
         </div>
         
         {/* Step Indicator */}
@@ -298,15 +298,15 @@ export default function BookingPage() {
           </div>
         )}
 
-        {/* ETAPA 3: DATA E HORA */}
+         {/* ETAPA 3: DATA E HORA */}
         {step === 3 && (
-          <div className="animate-in fade-in slide-in-from-right-4 duration-500 py-4">
-             <div className="flex gap-3 overflow-x-auto pb-6 no-scrollbar snap-x">
+          <div className="animate-in fade-in slide-in-from-right-4 duration-500 py-4 max-w-full overflow-hidden">
+             <div className="flex gap-3 overflow-x-auto pb-6 no-scrollbar snap-x touch-pan-x px-1">
                 {dateList.map(date => (
                   <button 
                     key={date.toISOString()}
                     onClick={() => { setSelectedDate(date); setSelectedTime(null); }}
-                    className={`flex flex-col items-center min-w-[70px] p-4 rounded-2xl transition-all snap-start ${isSameDay(selectedDate, date) ? 'bg-[#CBA64B] text-black shadow-lg scale-105' : 'bg-[#141414] text-gray-500 border border-white/5 hover:border-white/10'}`}
+                    className={`flex flex-col items-center min-w-[72px] p-4 rounded-2xl transition-all snap-start ${isSameDay(selectedDate, date) ? 'bg-[#CBA64B] text-black shadow-lg scale-105' : 'bg-[#141414] text-gray-500 border border-white/5 hover:border-white/10'}`}
                   >
                     <span className="text-[10px] uppercase font-bold mb-1 opacity-70">{format(date, 'eee', { locale: ptBR })}</span>
                     <span className="text-lg font-bold">{format(date, 'dd')}</span>
@@ -317,30 +317,30 @@ export default function BookingPage() {
              <div className="mt-4 flex flex-col gap-8">
                {slots.manha.length > 0 && (
                  <div>
-                    <h4 className="text-xs font-bold text-gray-500 uppercase tracking-[0.2em] mb-4 flex items-center gap-2">🌄 Manhã</h4>
-                    <div className="grid grid-cols-4 gap-2">
+                    <h4 className="text-xs font-bold text-gray-500 uppercase tracking-[0.2em] mb-4 flex items-center gap-2 px-1">🌄 Manhã</h4>
+                    <div className="grid grid-cols-4 sm:grid-cols-4 gap-2">
                        {slots.manha.map(time => (
-                        <button key={time} onClick={() => { setSelectedTime(time); setStep(4); }} className={`py-3 rounded-xl text-center text-sm font-medium border transition-all ${selectedTime === time ? 'bg-[#CBA64B] border-[#CBA64B] text-black' : 'bg-[#141414] border-white/5 hover:border-[#CBA64B]/40'}`}>{time}</button>
+                        <button key={time} onClick={() => { setSelectedTime(time); setStep(4); }} className={`py-3 px-1 rounded-xl text-center text-xs sm:text-sm font-medium border transition-all ${selectedTime === time ? 'bg-[#CBA64B] border-[#CBA64B] text-black' : 'bg-[#141414] border-white/5 hover:border-[#CBA64B]/40'}`}>{time}</button>
                        ))}
                     </div>
                  </div>
                )}
                 {slots.tarde.length > 0 && (
                  <div>
-                    <h4 className="text-xs font-bold text-gray-500 uppercase tracking-[0.2em] mb-4 flex items-center gap-2">☀️ Tarde</h4>
-                    <div className="grid grid-cols-4 gap-2">
+                    <h4 className="text-xs font-bold text-gray-500 uppercase tracking-[0.2em] mb-4 flex items-center gap-2 px-1">☀️ Tarde</h4>
+                    <div className="grid grid-cols-4 sm:grid-cols-4 gap-2">
                        {slots.tarde.map(time => (
-                        <button key={time} onClick={() => { setSelectedTime(time); setStep(4); }} className={`py-3 rounded-xl text-center text-sm font-medium border transition-all ${selectedTime === time ? 'bg-[#CBA64B] border-[#CBA64B] text-black' : 'bg-[#141414] border-white/5 hover:border-[#CBA64B]/40'}`}>{time}</button>
+                        <button key={time} onClick={() => { setSelectedTime(time); setStep(4); }} className={`py-3 px-1 rounded-xl text-center text-xs sm:text-sm font-medium border transition-all ${selectedTime === time ? 'bg-[#CBA64B] border-[#CBA64B] text-black' : 'bg-[#141414] border-white/5 hover:border-[#CBA64B]/40'}`}>{time}</button>
                        ))}
                     </div>
                  </div>
                )}
                 {slots.noite.length > 0 && (
                  <div>
-                    <h4 className="text-xs font-bold text-gray-500 uppercase tracking-[0.2em] mb-4 flex items-center gap-2">🌙 Noite</h4>
-                    <div className="grid grid-cols-4 gap-2">
+                    <h4 className="text-xs font-bold text-gray-500 uppercase tracking-[0.2em] mb-4 flex items-center gap-2 px-1">🌙 Noite</h4>
+                    <div className="grid grid-cols-4 sm:grid-cols-4 gap-2">
                        {slots.noite.map(time => (
-                        <button key={time} onClick={() => { setSelectedTime(time); setStep(4); }} className={`py-3 rounded-xl text-center text-sm font-medium border transition-all ${selectedTime === time ? 'bg-[#CBA64B] border-[#CBA64B] text-black' : 'bg-[#141414] border-white/5 hover:border-[#CBA64B]/40'}`}>{time}</button>
+                        <button key={time} onClick={() => { setSelectedTime(time); setStep(4); }} className={`py-3 px-1 rounded-xl text-center text-xs sm:text-sm font-medium border transition-all ${selectedTime === time ? 'bg-[#CBA64B] border-[#CBA64B] text-black' : 'bg-[#141414] border-white/5 hover:border-[#CBA64B]/40'}`}>{time}</button>
                        ))}
                     </div>
                  </div>

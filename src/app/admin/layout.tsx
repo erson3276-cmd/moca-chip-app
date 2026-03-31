@@ -24,6 +24,10 @@ import {
 // Sidebar: #121021
 // Active: #5E41FF
 
+import { useRouter } from 'next/navigation'
+import { adminLogout } from '@/app/actions/admin'
+import { supabase } from '@/lib/supabase'
+
 const sidebarItems = [
   { name: 'Agenda', icon: Calendar, path: '/admin/agenda' },
   { name: 'Vendas', icon: Calculator, path: '/admin/vendas' },
@@ -34,7 +38,6 @@ const sidebarItems = [
   { name: 'ManagerTalk', icon: MessageSquare, path: '/admin/managertalk' },
   { name: 'Comissão', icon: Calculator, path: '/admin/comissao' },
   { name: 'Gestão do salão', icon: Settings, path: '/admin/gestao' },
-
 ]
 
 export default function AdminLayout({
@@ -43,7 +46,26 @@ export default function AdminLayout({
   children: React.ReactNode
 }) {
   const pathname = usePathname()
+  const router = useRouter()
   const [isSidebarOpen, setIsSidebarOpen] = useState(false)
+  const [profile, setProfile] = useState<any>(null)
+
+  React.useEffect(() => {
+    async function loadProfile() {
+      const { data } = await supabase.from('profiles').select('professional_name, image_url').maybeSingle()
+      if (data) setProfile(data)
+      else {
+        const { data: d2 } = await supabase.from('perfil').select('professional_name, image_url').maybeSingle()
+        if (d2) setProfile(d2)
+      }
+    }
+    loadProfile()
+  }, [])
+
+  const handleLogout = async () => {
+    await adminLogout()
+    router.push('/admin/login')
+  }
 
   return (
     <div className="flex min-h-screen bg-[#0A0A0A] text-white selection:bg-[#5E41FF]/30">
@@ -73,16 +95,18 @@ export default function AdminLayout({
         {/* Header da Sidebar */}
         <div className="p-6 flex items-center justify-between">
            <div className="flex items-center gap-3">
-             <div className="w-8 h-8 rounded-full bg-[#5E41FF] flex items-center justify-center font-bold text-white shadow-lg shadow-[#5E41FF]/20">B</div>
+             <div className="w-8 h-8 rounded-full bg-[#5E41FF] flex items-center justify-center font-bold text-white shadow-lg shadow-[#5E41FF]/20">
+               {(profile?.professional_name || 'M')[0]}
+             </div>
              <div className="flex flex-col">
-               <span className="text-sm font-bold tracking-tight leading-none">Moça Chic</span>
+               <span className="text-sm font-bold tracking-tight leading-none">Moça Chiq</span>
                <span className="text-[10px] text-gray-500 uppercase font-bold tracking-widest mt-1">Premium</span>
              </div>
            </div>
         </div>
 
         {/* Navigation Items */}
-        <nav className="px-3 mt-4 space-y-1">
+        <nav className="px-3 mt-4 space-y-1 overflow-y-auto max-h-[calc(100vh-250px)] no-scrollbar">
           {sidebarItems.map((item) => {
             const isActive = pathname.startsWith(item.path)
             return (
@@ -108,7 +132,10 @@ export default function AdminLayout({
              <button className="flex items-center gap-3 text-xs text-gray-400 hover:text-white w-full transition-colors font-medium">
                <HelpCircle size={14} /> Central de Ajuda
              </button>
-             <button className="flex items-center gap-3 text-xs text-red-400/80 hover:text-red-400 w-full transition-colors font-medium">
+             <button 
+               onClick={handleLogout}
+               className="flex items-center gap-3 text-xs text-red-400/80 hover:text-red-400 w-full transition-colors font-medium"
+             >
                <LogOut size={14} /> Sair do Sistema
              </button>
            </div>
@@ -129,14 +156,20 @@ export default function AdminLayout({
              <button className="p-2 text-gray-500 hover:text-[#5E41FF] transition-colors"><Bell size={18} /></button>
              <div className="w-px h-6 bg-white/5 mx-2" />
              <div className="flex items-center gap-3">
-                <span className="text-xs font-semibold text-gray-400">Bia Barros</span>
-                <div className="w-8 h-8 rounded-full bg-[#18181a] border border-white/10 flex items-center justify-center"><Users size={14} className="text-gray-500" /></div>
+                <span className="text-xs font-semibold text-gray-400">{profile?.professional_name || 'Suanne Chagas'}</span>
+                <div className="w-8 h-8 rounded-full bg-[#18181a] border border-white/10 flex items-center justify-center overflow-hidden">
+                   {profile?.image_url ? (
+                     <img src={profile.image_url} alt="Profile" className="w-full h-full object-cover" />
+                   ) : (
+                     <Users size={14} className="text-gray-500" />
+                   )}
+                </div>
              </div>
           </div>
         </header>
 
         {/* Content Body */}
-        <div className="p-6 lg:p-8 animate-in fade-in duration-700 overflow-y-auto">
+        <div className="p-4 lg:p-8 animate-in fade-in duration-700 overflow-y-auto">
           {children}
         </div>
       </main>
