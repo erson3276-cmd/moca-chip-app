@@ -246,6 +246,52 @@ export async function testEvolutionConnection() {
   }
 }
 
+// --- GESTÃO DE CLIENTES ---
+
+export async function getCustomers() {
+  const tables = ['clientes', 'customers']
+  for (const table of tables) {
+    const { data, error } = await supabase
+      .from(table)
+      .select('*')
+      .order('name')
+    if (!error && data) return data
+  }
+  return []
+}
+
+export async function addCustomer(customerData: any) {
+  const tables = ['clientes', 'customers']
+  for (const table of tables) {
+    const { data, error } = await supabase
+      .from(table)
+      .insert([customerData])
+      .select()
+    
+    if (!error) {
+      revalidatePath('/admin', 'layout')
+      return data[0]
+    }
+  }
+  throw new Error('Falha ao criar cliente')
+}
+
+export async function toggleBlockCustomer(id: string, isBlocked: boolean) {
+  const tables = ['clientes', 'customers']
+  for (const table of tables) {
+    const { error } = await supabase
+      .from(table)
+      .update({ is_blocked: isBlocked })
+      .eq('id', id)
+    
+    if (!error) {
+      revalidatePath('/admin', 'layout')
+      return { success: true }
+    }
+  }
+  throw new Error('Falha ao atualizar status do cliente')
+}
+
 // --- SEGURANÇA E BLOQUEIO ---
 
 export async function adminLogin(password: string) {
