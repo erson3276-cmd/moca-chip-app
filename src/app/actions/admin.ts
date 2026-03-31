@@ -298,24 +298,30 @@ export async function uploadProfileImage(formData: FormData) {
 export async function updateProfile(profileData: any) {
   try {
     const tables = ['profiles', 'perfil']
-    for (const table of tables) {
-      // Remover campos nulos ou IDs que possam causar conflito se estivermos inserindo
-      const cleanData = { ...profileData }
-      delete cleanData.id 
-      delete cleanData.created_at
+    const cleanData = { 
+      name: profileData.name,
+      whatsapp_number: profileData.whatsapp_number,
+      professional_name: profileData.professional_name,
+      image_url: profileData.image_url,
+      address: profileData.address,
+      opening_time: profileData.opening_time,
+      closing_time: profileData.closing_time,
+      slot_interval: profileData.slot_interval
+    }
 
+    for (const table of tables) {
       const { data: existing, error: fetchError } = await supabase.from(table).select('id').maybeSingle()
       
       if (existing) {
         const { error: updateError } = await supabase.from(table).update(cleanData).eq('id', existing.id)
         if (!updateError) { 
-          await revalidateAdmin()
+          revalidatePath('/admin', 'layout')
           return { success: true } 
         }
       } else {
         const { error: insertError } = await supabase.from(table).insert([cleanData])
         if (!insertError) { 
-          await revalidateAdmin()
+          revalidatePath('/admin', 'layout')
           return { success: true } 
         }
       }
@@ -323,7 +329,7 @@ export async function updateProfile(profileData: any) {
     throw new Error('Não foi possível salvar em nenhuma tabela de perfil.')
   } catch (error: any) {
     console.error('Update Profile Error:', error)
-    throw new Error(error.message || 'Falha ao atualizar perfil')
+    return { success: false, error: error.message || 'Falha ao atualizar perfil' }
   }
 }
 

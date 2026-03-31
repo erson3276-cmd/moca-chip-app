@@ -7,37 +7,34 @@ export async function POST(request: Request) {
     const { name, whatsapp, serviceId, startTime, endTime } = await request.json()
     const cleanWhatsapp = whatsapp.replace(/\D/g, '')
 
-    // 0. Verificação de Bloqueio (Segurança VIP)
+    // 0. Verificação de Segurança VIP (Somente Clientes Cadastrados)
     const tables = ['clientes', 'customers']
+    let customer = null
+
     for (const table of tables) {
-      const { data: blockedData } = await supabase
+      const { data, error } = await supabase
         .from(table)
-        .select('is_blocked')
+        .select('id, name, is_blocked')
         .eq('whatsapp', cleanWhatsapp)
         .maybeSingle()
       
-      if (blockedData?.is_blocked) {
-        return NextResponse.json({ 
-          success: false, 
-          error: 'Agendamento indisponível para este número. Entre em contato com Suanne Chagas.' 
-        }, { status: 403 })
+      if (data) {
+        if (data.is_blocked) {
+          return NextResponse.json({ 
+            success: false, 
+            error: 'Agendamento indisponível para este número. Entre em contato com Suanne Chagas.' 
+          }, { status: 403 })
+        }
+        customer = data
+        break
       }
     }
 
-    // 1. Criar ou buscar o cliente no CRM (Tentativa PT/EN)
-    let customerData = { name, whatsapp }
-    let { data: customer, error: customerError } = await supabase
-      .from('clientes')
-      .upsert(customerData, { onConflict: 'whatsapp' })
-      .select().single()
-
-    if (customerError) {
-       const { data: c2, error: ec2 } = await supabase
-         .from('customers')
-         .upsert(customerData, { onConflict: 'whatsapp' })
-         .select().single()
-       if (ec2) throw ec2
-       customer = c2
+    if (!customer) {
+      return NextResponse.json({ 
+        success: false, 
+        error: 'Acesso Restrito: Seu número não foi encontrado em nossa base VIP. Entre em contato com Suanne Chagas para realizar seu cadastro.' 
+      }, { status: 403 })
     }
 
     // 2. Criar o agendamento (Tentativa PT/EN)

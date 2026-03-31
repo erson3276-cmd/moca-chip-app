@@ -58,12 +58,12 @@ export default function AgendaPage() {
     paymentMethod: 'Pix'
   })
 
-  // Configuração da Grade
+  // Configuração da Grade - 24 horas
   const start = startOfWeek(currentDate, { weekStartsOn: 1 })
   const end = addDays(start, 6)
   const days = eachDayOfInterval({ start, end })
-  const hours = Array.from({ length: 26 }, (_, i) => ({
-    h: Math.floor(i / 2) + 8,
+  const hours = Array.from({ length: 48 }, (_, i) => ({
+    h: Math.floor(i / 2),
     m: i % 2 === 0 ? '00' : '30'
   }))
 
@@ -90,8 +90,8 @@ export default function AgendaPage() {
 
   const getAppointmentStyle = (startTimeStr: string, duration: number) => {
     const d = parseISO(startTimeStr)
-    const minutesFromEight = (d.getHours() - 8) * 60 + d.getMinutes()
-    const top = (minutesFromEight / 30) * 48
+    const totalMinutes = d.getHours() * 60 + d.getMinutes()
+    const top = (totalMinutes / 30) * 48
     const height = (duration / 30) * 48
     return { top: `${top}px`, height: `${height}px` }
   }
@@ -442,6 +442,15 @@ export default function AgendaPage() {
           </div>
         </div>
       )}
+      {/* Botão Flutuante (FAB) - Estilo Colavo */}
+      <div className="fixed bottom-6 right-6 lg:hidden z-50">
+        <button 
+          onClick={() => setIsModalOpen(true)}
+          className="w-16 h-16 bg-[#5E41FF] text-white rounded-full shadow-2xl flex items-center justify-center hover:scale-110 active:scale-95 transition-all"
+        >
+          <Plus size={32} />
+        </button>
+      </div>
     </div>
   )
 }

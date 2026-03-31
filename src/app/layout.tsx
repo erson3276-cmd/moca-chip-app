@@ -13,11 +13,11 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Moça Chic - Salão Premium",
-  description: "Agende seu horário com a Bia Barros na Moça Chic.",
+  title: "Moça Chiq - Salão Premium",
+  description: "Agende seu horário com a Suanne Chagas na Moça Chiq.",
   manifest: '/manifest.json',
   appleWebApp: {
-    title: 'Moça Chic',
+    title: 'Moça Chiq',
     statusBarStyle: 'black-translucent',
     capable: true,
   },

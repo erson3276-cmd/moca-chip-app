@@ -70,12 +70,15 @@ export default function SettingsPage() {
     
     try {
        const { updateProfile: updateSrv } = await import('@/app/actions/admin')
-       // Garantir o nome correto na persistência se necessário
-       await updateSrv(profile)
-       setSuccess(true)
-       setTimeout(() => setSuccess(false), 3000)
+       const res = await updateSrv(profile)
+       if (res.success) {
+          setSuccess(true)
+          setTimeout(() => setSuccess(false), 3000)
+       } else {
+          alert('Erro ao salvar: ' + res.error)
+       }
     } catch (error: any) {
-       alert('Erro ao salvar: ' + error.message)
+       alert('Erro ao salvar: ' + (error.message || 'Erro desconhecido'))
     } finally {
        setSaving(false)
     }
