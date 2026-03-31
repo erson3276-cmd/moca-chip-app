@@ -71,8 +71,10 @@ export default function DespesasPage() {
   const handleDelete = async (id: string) => {
     if (!confirm('Tem certeza que deseja excluir esta despesa?')) return
     try {
+      const { deleteExpense } = await import('@/app/actions/admin')
       await deleteExpense(id)
       await loadData()
+      window.location.reload()
     } catch (e: any) {
       alert('Erro ao excluir: ' + e.message)
     }
@@ -177,16 +179,20 @@ export default function DespesasPage() {
                        <td className="p-6">
                           <div className="flex items-center justify-center gap-2">
                              <button 
-                               onClick={() => openEdit(expense)}
-                               className="p-2 text-gray-500 hover:text-[#5E41FF] hover:bg-[#5E41FF]/10 rounded-lg transition-all"
+                               type="button"
+                               onClick={(e) => { e.preventDefault(); openEdit(expense); }}
+                               className="p-3 text-gray-400 hover:text-[#5E41FF] hover:bg-[#5E41FF]/10 rounded-xl transition-all border border-transparent hover:border-[#5E41FF]/20"
+                               title="Editar"
                              >
-                                <Edit2 size={16} />
+                                <Edit2 size={18} />
                              </button>
                              <button 
-                               onClick={() => handleDelete(expense.id)}
-                               className="p-2 text-gray-500 hover:text-red-500 hover:bg-red-500/10 rounded-lg transition-all"
+                               type="button"
+                               onClick={(e) => { e.preventDefault(); handleDelete(expense.id); }}
+                               className="p-3 text-gray-400 hover:text-red-500 hover:bg-red-500/10 rounded-xl transition-all border border-transparent hover:border-red-500/20"
+                               title="Excluir"
                              >
-                                <Trash2 size={16} />
+                                <Trash2 size={18} />
                              </button>
                           </div>
                        </td>

@@ -11,6 +11,36 @@ async function revalidateAdmin() {
   revalidatePath('/admin', 'layout')
 }
 
+/**
+ * Modelos de Mensagens (Estilo ColavoSalon)
+ */
+const TEMPLATES = {
+  confirmacao: `[ [Nome do salão] ]\n\nAgendamento confirmado!\n\nOlá, Seu agendamento foi confirmado.\n\nDetalhes do agendamento:\n■ [Data e hora da marcação]\n■ [Nome do serviço], [Duração] \n■ Profissional : [Nome do profissional]\n■ Endereço : [Endereço do salão]\n\nMal podemos esperar para te receber por aqui :)\n\n🔗 Ver mais detalhes :\n[Link]`,
+  remarcado: `[ [Nome do salão] ]\n\nSeu agendamento foi remarcado 🗓️\n\nOlá, seu agendamento foi remarcado.\n\nDetalhes do reagendamento:\n■ [Data e hora da marcação]\n■ [Nome do serviço], [Duração]\n■ Profissional : [Nome do profissional]\n■ Endereço : [Endereço do salão]\n\n🔗 Ver mais detalhes :\n[Link]`,
+  cancelado: `[ [Nome do salão] ]\n\nAgendamento cancelado 🗓️ ⛔\n\nOlá, seu agendamento de [Nome do serviço] com [Nome do Profissional] para [Data do Agendamento] & [Hora] foi cancelado.\n\nLamentamos o cancelamento, mas esperamos te ver em breve.\n\n■ Endereço : [Endereço do salão]\n\n🔗 Ver mais detalhes :\n[Link]`,
+  lembrete_dia: `[ [Nome do salão] ]\n\nChegou o dia do seu agendamento!😃\n\nOlá, viemos te lembrar que você tem um agendamento conosco hoje às [Hora do Agendamento]\n\nDetalhes do agendamento:\n■ [Data e hora da marcação]\n■ [Nome do serviço], [Duração]\n■ Profissional : [Nome do profissional]\n■ Endereço : [Endereço do salão]\n\nMal podemos esperar para te receber por aqui :)\n\n🔗 Ver mais detalhes :\n[Link]`,
+  falta: `[ [Nome do salão] ]\n\nOh não! Você perdeu o horário do seu agendamento conosco 🙁\n\nOlá, viemos te informar que você perdeu seu agendamento conosco.\n\nDetalhes do agendamento:\n■ [Data e hora da marcação]\n■ [Nome do serviço], [Duração]\n■ Profissional : [Nome do profissional]\n■ Endereço : [Endereço do salão]\n\n🔗 Ver mais detalhes :\n[Link]`
+}
+
+function processTemplate(templateKey: keyof typeof TEMPLATES, data: any) {
+  let text = TEMPLATES[templateKey]
+  const opening = data.profile?.opening_time || '09:00'
+  
+  return text
+    .replace('[ [Nome do salão] ]', data.profile?.name || 'Moça Chiq')
+    .replace('[Nome do salão]', data.profile?.name || 'Moça Chiq')
+    .replace('[Data e hora da marcação]', data.startTimeStr || '')
+    .replace('[Nome do serviço]', data.service?.name || '')
+    .replace('[Duração]', `${data.service?.duration_minutes || 30} min`)
+    .replace('[Nome do profissional]', data.profile?.professional_name || 'Suanne Chagas')
+    .replace('[Nome do Profissional]', data.profile?.professional_name || 'Suanne Chagas')
+    .replace('[Endereço do salão]', data.profile?.address || '')
+    .replace('[Data do Agendamento]', data.dateStr || '')
+    .replace('[Hora]', data.timeStr || '')
+    .replace('[Hora do Agendamento]', data.timeStr || '')
+    .replace('[Link]', 'https://moca-chip-app.vercel.app')
+}
+
 // --- GESTÃO DE AGENDAMENTOS ---
 
 export async function getAppointments() {
@@ -47,12 +77,46 @@ export async function addAppointment(appointmentData: any) {
 export async function updateAppointmentStatus(id: string, status: string) {
   const tables = ['agendamentos', 'appointments']
   for (const table of tables) {
+    // 1. Pegar dados do agendamento para a mensagem
+    const { data: apt } = await supabase
+      .from(table)
+      .select('*, customers:customer_id(*), services:service_id(*)')
+      .eq('id', id)
+      .single()
+
     const { error } = await supabase
       .from(table)
       .update({ status })
       .eq('id', id)
     
     if (!error) {
+      // 2. Disparo Automático de Mensagem (Colavo Style)
+      try {
+        const profile = await getProfile()
+        if (apt && profile) {
+          const startTime = new Date(apt.start_time)
+          const msgData = {
+            profile,
+            service: apt.services,
+            startTimeStr: startTime.toLocaleString('pt-BR'),
+            dateStr: startTime.toLocaleDateString('pt-BR'),
+            timeStr: startTime.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })
+          }
+
+          if (status === 'cancelado') {
+            const msg = processTemplate('cancelado', msgData)
+            await sendWhatsAppMessage(msg, apt.customers.whatsapp)
+          } else if (status === 'finalizado') {
+            // Pode enviar mensagem de agradecimento se desejar
+          } else if (status === 'faltou') {
+            const msg = processTemplate('falta', msgData)
+            await sendWhatsAppMessage(msg, apt.customers.whatsapp)
+          }
+        }
+      } catch (waErr) {
+        console.error("Erro ao enviar mensagem automática:", waErr)
+      }
+
       await revalidateAdmin()
       revalidatePath('/admin/agenda')
       revalidatePath('/')
@@ -351,6 +415,11 @@ export async function getCustomers() {
 
 export async function addCustomer(customerData: any) {
   const tables = ['clientes', 'customers']
+  // Limpando o telefone antes de salvar
+  if (customerData.whatsapp) {
+    customerData.whatsapp = customerData.whatsapp.replace(/\D/g, '')
+  }
+  
   for (const table of tables) {
     const { data, error } = await supabase
       .from(table)
@@ -447,7 +516,7 @@ export async function updateProfile(profileData: any) {
   try {
     const cleanData = { 
       name: profileData.name,
-      whatsapp_number: profileData.whatsapp_number,
+      whatsapp_number: profileData.whatsapp_number ? profileData.whatsapp_number.replace(/\D/g, '') : '',
       professional_name: profileData.professional_name,
       image_url: profileData.image_url,
       address: profileData.address,

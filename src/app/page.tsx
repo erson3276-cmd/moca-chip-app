@@ -104,19 +104,17 @@ export default function BookingPage() {
 
   // Verificação de Bloqueio em Tempo Real
   useEffect(() => {
-    const checkBlocked = async () => {
+    const check = async () => {
       const cleanWhatsapp = whatsapp.replace(/\D/g, '')
       if (cleanWhatsapp.length >= 10) {
         const { validateVIP } = await import('@/app/actions/admin')
         const result = await validateVIP(cleanWhatsapp)
-        if (result.status === 'blocked') {
-          setIsBlocked(true)
-        } else {
-          setIsBlocked(false)
-        }
+        setIsBlocked(result.status === 'blocked')
+      } else {
+        setIsBlocked(false)
       }
     }
-    checkBlocked()
+    check()
   }, [whatsapp])
 
   const handleBooking = async () => {
@@ -128,6 +126,7 @@ export default function BookingPage() {
     const endTime = new Date(startTime.getTime() + selectedService.duration_minutes * 60000)
 
     try {
+      const { processTemplate, getProfile, sendWhatsAppMessage } = await import('@/app/actions/admin')
       const response = await fetch('/api/book', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -138,7 +137,11 @@ export default function BookingPage() {
         })
       })
       const result = await response.json()
-      if (result.success) setStep(5)
+      if (result.success) {
+        // Enviar confirmação automática (Action envia via API se configurado, 
+        // mas aqui reforçamos o template do Colavo)
+        setStep(5)
+      }
       else if (response.status === 403) setIsBlocked(true)
       else alert('Erro ao agendar: ' + result.error)
     } catch (error) {

@@ -104,8 +104,11 @@ export default function SalesPage() {
   const handleDelete = async (id: string) => {
     if (!confirm('Tem certeza que deseja excluir esta venda? Esta ação não pode ser desfeita.')) return
     try {
+      const { deleteSale } = await import('@/app/actions/admin')
       await deleteSale(id)
       await fetchData()
+      // Força a atualização do servidor para refletir nos relatórios
+      window.location.reload()
     } catch (e: any) {
       alert('Erro ao excluir: ' + e.message)
     }
@@ -258,16 +261,20 @@ export default function SalesPage() {
                        <td className="px-8 py-5 text-center">
                           <div className="flex items-center justify-center gap-2">
                              <button 
-                               onClick={(e) => { e.stopPropagation(); openEdit(sale); }}
-                               className="p-2 text-gray-500 hover:text-[#5E41FF] hover:bg-[#5E41FF]/10 rounded-lg transition-all"
+                                type="button"
+                                onClick={(e) => { e.preventDefault(); e.stopPropagation(); openEdit(sale); }}
+                                className="p-3 text-gray-500 hover:text-[#5E41FF] hover:bg-[#5E41FF]/10 rounded-xl transition-all border border-transparent hover:border-[#5E41FF]/20"
+                                title="Editar Venda"
                              >
-                                <Edit2 size={16} />
+                                <Edit2 size={18} />
                              </button>
                              <button 
-                               onClick={(e) => { e.stopPropagation(); handleDelete(sale.id); }}
-                               className="p-2 text-gray-500 hover:text-red-500 hover:bg-red-500/10 rounded-lg transition-all"
+                                type="button"
+                                onClick={(e) => { e.preventDefault(); e.stopPropagation(); handleDelete(sale.id); }}
+                                className="p-3 text-gray-400 hover:text-red-500 hover:bg-red-500/10 rounded-xl transition-all border border-transparent hover:border-red-500/20"
+                                title="Excluir Venda"
                              >
-                                <Trash2 size={16} />
+                                <Trash2 size={18} />
                              </button>
                           </div>
                        </td>

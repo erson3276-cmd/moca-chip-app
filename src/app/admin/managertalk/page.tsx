@@ -32,6 +32,25 @@ export default function ManagerTalkPage() {
     { id: 101, fromUser: true, text: activeContact.lastMessage, time: activeContact.time }
   ])
 
+  const loadTemplate = async (key: string) => {
+    try {
+      const { getProfile } = await import('@/app/actions/admin')
+      const profile = await getProfile()
+      
+      const templatesList: any = {
+        confirmacao: `[ ${profile?.name || 'Salão'} ]\n\nAgendamento confirmado!\n\nOlá, Seu agendamento foi confirmado.`,
+        remarcado: `[ ${profile?.name || 'Salão'} ]\n\nSeu agendamento foi remarcado 🗓️`,
+        cancelado: `[ ${profile?.name || 'Salão'} ]\n\nAgendamento cancelado 🗓️ ⛔`,
+        lembrete_dia: `[ ${profile?.name || 'Salão'} ]\n\nChegou o dia do seu agendamento!😃`,
+        falta: `[ ${profile?.name || 'Salão'} ]\n\nOh não! Você perdeu o horário do seu agendamento conosco 🙁`
+      }
+
+      setMessage(templatesList[key] || "Olá!")
+    } catch (err) {
+      console.error("Erro ao carregar template:", err)
+    }
+  }
+
   const handleSendMessage = async () => {
     if (!message.trim() || sending) return
     setSending(true)
@@ -42,8 +61,8 @@ export default function ManagerTalkPage() {
     setMessage('')
 
     try {
-      // 1. Send via Evolution API Action
-      await sendManagerTalkMessage(currentMsg, activeContact.phone)
+      // 1. Send via Evolution API Action (CORRECT ORDER: phone, text)
+      await sendManagerTalkMessage(activeContact.phone, currentMsg)
       // Success! Message effectively sent.
     } catch (error: any) {
       alert("Erro no envio pelo Evolution API: " + error.message)
@@ -143,27 +162,38 @@ export default function ManagerTalkPage() {
             ))}
          </div>
 
-         <div className="p-4 bg-[#121021]/80 z-10 flex items-center gap-3 border-t border-white/5">
-            <button className="text-gray-400 hover:text-white transition p-2"><Smile size={24}/></button>
-            <button className="text-gray-400 hover:text-white transition p-2"><Paperclip size={24}/></button>
-            <div className="flex-1 relative">
-               <input 
-                 type="text" 
-                 placeholder="Digite uma mensagem..." 
-                 value={message}
-                 onChange={(e) => setMessage(e.target.value)}
-                 className="w-full pl-5 pr-5 py-3.5 bg-[#18181a] border border-white/5 rounded-2xl text-sm focus:border-[#5E41FF]/40 outline-none transition-all text-white"
-                 onKeyDown={(e) => e.key === 'Enter' && handleSendMessage()}
-                 disabled={sending}
-               />
+         <div className="p-4 bg-[#121021]/80 z-10 flex flex-col gap-3 border-t border-white/5">
+            {/* NOVO: QUICK TEMPLATES BAR (VISIBILIDADE TOTAL) */}
+            <div className="flex flex-wrap gap-2 pb-2">
+               <button onClick={() => loadTemplate('confirmacao')} className="px-3 py-1.5 bg-emerald-500/10 text-emerald-500 rounded-lg text-[10px] font-bold hover:bg-emerald-500/20 transition-all border border-emerald-500/20">CORFIRMAÇÃO</button>
+               <button onClick={() => loadTemplate('lembrete_dia')} className="px-3 py-1.5 bg-[#5E41FF]/10 text-[#5E41FF] rounded-lg text-[10px] font-bold hover:bg-[#5E41FF]/20 transition-all border border-[#5E41FF]/20">LEMBRETE HOJE</button>
+               <button onClick={() => loadTemplate('cancelado')} className="px-3 py-1.5 bg-red-500/10 text-red-500 rounded-lg text-[10px] font-bold hover:bg-red-500/20 transition-all border border-red-500/20">CANCELADO</button>
+               <button onClick={() => loadTemplate('falta')} className="px-3 py-1.5 bg-amber-500/10 text-amber-400 rounded-lg text-[10px] font-bold hover:bg-amber-500/20 transition-all border border-amber-500/20">FALTOU ❌</button>
+               <button onClick={() => loadTemplate('remarcado')} className="px-3 py-1.5 bg-blue-500/10 text-blue-400 rounded-lg text-[10px] font-bold hover:bg-blue-500/20 transition-all border border-blue-500/20">REMARCADO</button>
             </div>
-            <button 
-              onClick={handleSendMessage} 
-              disabled={sending}
-              className={`p-3.5 rounded-full transition-all ${message ? 'bg-[#5E41FF] text-white shadow-lg shadow-[#5E41FF]/30 scale-100' : 'bg-white/5 text-gray-500 scale-95'} disabled:opacity-50`}
-            >
-               {sending ? <Loader2 size={20} className="animate-spin" /> : <Send size={20} className={message ? 'ml-1' : ''} />}
-            </button>
+
+            <div className="flex items-center gap-3">
+              <button className="text-gray-400 hover:text-white transition p-2"><Smile size={24}/></button>
+              <button className="text-gray-400 hover:text-white transition p-2"><Paperclip size={24}/></button>
+              <div className="flex-1 relative">
+                 <input 
+                   type="text" 
+                   placeholder="Digite uma mensagem..." 
+                   value={message}
+                   onChange={(e) => setMessage(e.target.value)}
+                   className="w-full pl-5 pr-5 py-3.5 bg-[#18181a] border border-white/5 rounded-2xl text-sm focus:border-[#5E41FF]/40 outline-none transition-all text-white"
+                   onKeyDown={(e) => e.key === 'Enter' && handleSendMessage()}
+                   disabled={sending}
+                 />
+              </div>
+              <button 
+                onClick={handleSendMessage} 
+                disabled={sending}
+                className={`p-3.5 rounded-full transition-all ${message ? 'bg-[#5E41FF] text-white shadow-lg shadow-[#5E41FF]/30 scale-100' : 'bg-white/5 text-gray-500 scale-95'} disabled:opacity-50`}
+              >
+                 {sending ? <Loader2 size={20} className="animate-spin" /> : <Send size={20} className={message ? 'ml-1' : ''} />}
+              </button>
+            </div>
          </div>
       </div>
     </div>
