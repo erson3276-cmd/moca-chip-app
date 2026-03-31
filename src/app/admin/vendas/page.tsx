@@ -1,8 +1,6 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-
-export const dynamic = 'force-dynamic'
 import { 
   Calculator, 
   Plus, 
@@ -21,9 +19,11 @@ import {
   Loader2,
   CreditCard,
   Banknote,
-  QrCode
+  QrCode,
+  Trash2,
+  Edit2
 } from 'lucide-react'
-import { addSale, getSales, getCustomers, getServices } from '@/app/actions/admin'
+import { addSale, getSales, getCustomers, updateSale, deleteSale } from '@/app/actions/admin'
 
 export default function SalesPage() {
   const [sales, setSales] = useState<any[]>([])
@@ -35,22 +35,28 @@ export default function SalesPage() {
   const [isModalOpen, setIsModalOpen] = useState(false)
   const [saving, setSaving] = useState(false)
   const [customers, setCustomers] = useState<any[]>([])
-  const [services, setServices] = useState<any[]>([])
+  const [editingId, setEditingId] = useState<string | null>(null)
 
   // Form State
   const [formData, setFormData] = useState({
     customerId: '',
-    subtotal: 0,
-    discount: 0,
-    discountType: '$' as '$' | '%',
-    paymentMethod: 'Pix'
+    amount: 0,
+    paymentMethod: 'Pix',
+    status: 'pago'
   })
 
   async function fetchData() {
     setLoading(true)
-    try { const vendas = await getSales(); setSales(vendas); } catch(e) { console.error("Sales fetch erro:", e) }
-    try { const clientes = await getCustomers(); setCustomers(clientes); } catch(e) { console.error("Customers fetch erro:", e) }
-    try { const servs = await getServices(); setServices(servs); } catch(e) { console.error("Services fetch erro:", e) }
+    try { 
+      const vendas = await getSales()
+      setSales(vendas) 
+    } catch(e) { console.error("Sales fetch erro:", e) }
+    
+    try { 
+      const clientes = await getCustomers()
+      setCustomers(clientes) 
+    } catch(e) { console.error("Customers fetch erro:", e) }
+    
     setLoading(false)
   }
 
@@ -66,33 +72,54 @@ export default function SalesPage() {
 
   const totalRevenue = filteredSales.reduce((acc, curr) => acc + Number(curr.amount), 0)
 
-  // Cálculo de desconto no frontend
-  const calculatedDiscount = formData.discountType === '%' 
-    ? formData.subtotal * (formData.discount / 100)
-    : formData.discount
-    
-  const totalAmount = Math.max(0, formData.subtotal - calculatedDiscount)
-
   const handleCheckout = async (e: React.FormEvent) => {
     e.preventDefault()
     setSaving(true)
 
     try {
-      await addSale({
+      const payload = {
         customer_id: formData.customerId,
-        amount: totalAmount,
+        amount: formData.amount,
         payment_method: formData.paymentMethod,
-        status: 'pago'
-      })
+        status: formData.status
+      }
+
+      if (editingId) {
+        await updateSale(editingId, payload)
+      } else {
+        await addSale(payload)
+      }
 
       await fetchData()
       setIsModalOpen(false)
-      setFormData({ customerId: '', subtotal: 0, discount: 0, discountType: '$', paymentMethod: 'Pix' })
+      setEditingId(null)
+      setFormData({ customerId: '', amount: 0, paymentMethod: 'Pix', status: 'pago' })
     } catch(error: any) {
-      alert('Erro ao finalizar venda (Servidor): ' + error.message)
+      alert('Erro ao processar venda: ' + error.message)
     }
 
     setSaving(false)
+  }
+
+  const handleDelete = async (id: string) => {
+    if (!confirm('Tem certeza que deseja excluir esta venda? Esta ação não pode ser desfeita.')) return
+    try {
+      await deleteSale(id)
+      await fetchData()
+    } catch (e: any) {
+      alert('Erro ao excluir: ' + e.message)
+    }
+  }
+
+  const openEdit = (sale: any) => {
+    setEditingId(sale.id)
+    setFormData({
+      customerId: sale.customer_id,
+      amount: sale.amount,
+      paymentMethod: sale.payment_method || 'Pix',
+      status: sale.status || 'pago'
+    })
+    setIsModalOpen(true)
   }
 
   return (
@@ -104,7 +131,11 @@ export default function SalesPage() {
         </div>
         <div className="flex items-center gap-3">
           <button 
-            onClick={() => setIsModalOpen(true)}
+            onClick={() => {
+              setEditingId(null)
+              setFormData({ customerId: '', amount: 0, paymentMethod: 'Pix', status: 'pago' })
+              setIsModalOpen(true)
+            }}
             className="flex items-center gap-2 px-4 py-2.5 bg-[#5E41FF] text-white rounded-xl text-sm font-bold shadow-lg shadow-[#5E41FF]/20 hover:brightness-110 active:scale-95 transition-all"
           >
             <Plus size={18} /> Adicionar venda
@@ -182,7 +213,7 @@ export default function SalesPage() {
                      <th className="px-8 py-5 text-right">Valor Líquido</th>
                      <th className="px-8 py-5">Pagamento</th>
                      <th className="px-8 py-5 text-center">Status</th>
-                     <th className="px-8 py-5 text-center w-10"><MoreVertical size={14} className="mx-auto" /></th>
+                     <th className="px-8 py-5 text-center w-10">Ações</th>
                   </tr>
                </thead>
                <tbody className="divide-y divide-white/5">
@@ -208,7 +239,7 @@ export default function SalesPage() {
                        <td className="px-8 py-5 text-white">
                           <div className="flex items-center gap-2">
                              <div className="w-1.5 h-1.5 rounded-full bg-[#5E41FF]" />
-                             <span className="text-sm font-semibold">{sale.customers?.name}</span>
+                             <span className="text-sm font-semibold">{sale.customers?.name || 'Cliente Avulso'}</span>
                           </div>
                        </td>
                        <td className="px-8 py-5 text-right text-lg font-bold text-[#5E41FF] tracking-tight">
@@ -225,7 +256,20 @@ export default function SalesPage() {
                           )}
                        </td>
                        <td className="px-8 py-5 text-center">
-                          <button className="p-2 text-gray-600 hover:text-white transition-colors"><MoreVertical size={16} /></button>
+                          <div className="flex items-center justify-center gap-2">
+                             <button 
+                               onClick={(e) => { e.stopPropagation(); openEdit(sale); }}
+                               className="p-2 text-gray-500 hover:text-[#5E41FF] hover:bg-[#5E41FF]/10 rounded-lg transition-all"
+                             >
+                                <Edit2 size={16} />
+                             </button>
+                             <button 
+                               onClick={(e) => { e.stopPropagation(); handleDelete(sale.id); }}
+                               className="p-2 text-gray-500 hover:text-red-500 hover:bg-red-500/10 rounded-lg transition-all"
+                             >
+                                <Trash2 size={16} />
+                             </button>
+                          </div>
                        </td>
                     </tr>
                   ))}
@@ -234,7 +278,7 @@ export default function SalesPage() {
          </div>
       </div>
 
-      {/* MÓDULO: MODAL CHECKOUT / NOVA VENDA (Colavo Clone Funcional) */}
+      {/* MÓDULO: MODAL CHECKOUT / NOVA VENDA */}
       {isModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center lg:justify-end animate-in fade-in duration-300">
           <div 
@@ -250,15 +294,15 @@ export default function SalesPage() {
                    <button onClick={() => setIsModalOpen(false)} className="p-2 -ml-2 text-gray-400 hover:text-white rounded-full hover:bg-white/5 transition-colors">
                       <X size={20} />
                    </button>
-                   <h2 className="text-lg font-bold tracking-tight">Checkout</h2>
+                   <h2 className="text-lg font-bold tracking-tight">{editingId ? 'Editar Venda' : 'Checkout'}</h2>
                 </div>
                 <button 
                   onClick={handleCheckout}
-                  disabled={saving || !formData.customerId || totalAmount === 0}
+                  disabled={saving || !formData.customerId}
                   className="px-5 py-2.5 bg-emerald-500 text-black text-sm font-bold rounded-xl shadow-lg shadow-emerald-500/20 hover:brightness-110 disabled:opacity-50 disabled:grayscale transition-all flex items-center gap-2"
                 >
                    {saving ? <Loader2 size={16} className="animate-spin" /> : <Save size={16} />}
-                   Concluir Venda
+                   {editingId ? 'Salvar' : 'Concluir Venda'}
                 </button>
              </div>
 
@@ -280,51 +324,43 @@ export default function SalesPage() {
                    </select>
                 </div>
 
-                {/* 2. Subtotal Bruto */}
+                {/* 2. Valor da Venda */}
                 <div className="space-y-1.5 p-4 rounded-2xl bg-[#18181a] border border-white/5 hover:border-white/10 transition-colors">
-                   <label className="text-[13px] font-bold text-gray-400 flex items-center gap-2"><Calculator size={14}/> Subtotal (Itens / Serviços)</label>
+                   <label className="text-[13px] font-bold text-gray-400 flex items-center gap-2"><Calculator size={14}/> Valor Total da Venda</label>
                    <div className="flex items-center gap-3">
                       <span className="text-xl font-bold text-gray-500">R$</span>
                       <input 
                         type="number" 
                         min="0"
                         step="0.01"
-                        value={formData.subtotal || ''}
-                        onChange={e => setFormData({...formData, subtotal: Number(e.target.value)})}
+                        value={formData.amount || ''}
+                        onChange={e => setFormData({...formData, amount: Number(e.target.value)})}
                         placeholder="0.00"
                         className="w-full bg-transparent text-2xl font-bold text-white outline-none placeholder-gray-700"
                       />
                    </div>
                 </div>
 
-                {/* 3. Aplicação de Desconto Móvel */}
-                <div className="grid grid-cols-3 gap-2 p-1 bg-[#121021]/80 rounded-xl border border-[#5E41FF]/20 shadow-inner">
-                   <button 
-                     onClick={() => setFormData({...formData, discountType: '$'})}
-                     className={`py-2 rounded-lg text-sm font-bold transition-colors ${formData.discountType === '$' ? 'bg-[#5E41FF] text-white shadow-lg' : 'text-gray-500 hover:text-white'}`}
-                   >
-                     $ Fixo
-                   </button>
-                   <button 
-                     onClick={() => setFormData({...formData, discountType: '%'})}
-                     className={`py-2 rounded-lg text-sm font-bold transition-colors ${formData.discountType === '%' ? 'bg-[#5E41FF] text-white shadow-lg' : 'text-gray-500 hover:text-white'}`}
-                   >
-                     % Porcentagem
-                   </button>
-                   <div className="relative">
-                      <span className="absolute left-2 top-1/2 -translate-y-1/2 text-gray-500 text-xs font-bold">{formData.discountType}</span>
-                      <input 
-                        type="number"
-                        min="0"
-                        value={formData.discount || ''}
-                        onChange={e => setFormData({...formData, discount: Number(e.target.value)})}
-                        placeholder="0"
-                        className="w-full h-full bg-[#18181a] rounded-lg pl-6 pr-2 font-bold text-white outline-none border border-transparent focus:border-[#5E41FF] text-right"
-                      />
+                {/* 3. Status da Venda */}
+                <div className="space-y-3">
+                   <label className="text-[13px] font-bold text-gray-400">Status de Recebimento</label>
+                   <div className="grid grid-cols-2 gap-3">
+                      <button 
+                         onClick={() => setFormData({...formData, status: 'pago'})}
+                         className={`py-3 rounded-xl border text-xs font-bold transition-all ${formData.status === 'pago' ? 'bg-emerald-500/10 border-emerald-500/50 text-emerald-400' : 'bg-black/20 border-white/5 text-gray-500'}`}
+                      >
+                         PAGO
+                      </button>
+                      <button 
+                         onClick={() => setFormData({...formData, status: 'pendente'})}
+                         className={`py-3 rounded-xl border text-xs font-bold transition-all ${formData.status === 'pendente' ? 'bg-amber-500/10 border-amber-500/50 text-amber-400' : 'bg-black/20 border-white/5 text-gray-500'}`}
+                      >
+                         PENDENTE
+                      </button>
                    </div>
                 </div>
 
-                {/* 4. Forma de Pagamento Gráfico */}
+                {/* 4. Forma de Pagamento */}
                 <div className="space-y-3 pt-2">
                    <label className="text-[13px] font-bold text-gray-400">Meio de Pagamento</label>
                    <div className="grid grid-cols-3 gap-3">
@@ -349,21 +385,14 @@ export default function SalesPage() {
                    </div>
                 </div>
 
-                {/* Linha de separação final */}
                 <div className="flex-1" />
 
                 <div className="p-5 rounded-2xl bg-gradient-to-br from-[#121021] to-[#0A0A0A] border border-white/10 shadow-2xl flex flex-col gap-1">
-                   {calculatedDiscount > 0 && (
-                     <div className="flex justify-between items-center text-sm font-bold text-red-400 mb-2">
-                        <span>Desconto Aplicado</span>
-                        <span>- R$ {calculatedDiscount.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</span>
-                     </div>
-                   )}
                    <div className="flex justify-between items-end">
-                      <span className="text-sm text-gray-500 font-bold uppercase tracking-widest">Líquido a Receber</span>
+                      <span className="text-sm text-gray-500 font-bold uppercase tracking-widest">Valor Final</span>
                       <span className="text-4xl font-black text-white tracking-tighter">
                          <span className="text-lg text-emerald-500 mr-1">R$</span>
-                         {totalAmount.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+                         {formData.amount.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
                       </span>
                    </div>
                 </div>

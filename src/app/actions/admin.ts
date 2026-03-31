@@ -90,63 +90,105 @@ export async function completeAppointmentCheckout(appointmentId: string, saleDat
 // --- GESTÃO DE VENDAS (FINANCEIRO) ---
 
 export async function getSales() {
-  const tables = ['vendas', 'sales']
-  for (const table of tables) {
-    const { data, error } = await supabase
-      .from(table)
-      .select('*, customers:customer_id(name)')
-      .order('created_at', { ascending: false })
-    
-    if (!error && data) return data
+  const { data, error } = await supabase
+    .from('vendas')
+    .select('*, customers:customer_id(name)')
+    .order('created_at', { ascending: false })
+  
+  if (error) {
+    console.error("Erro ao buscar vendas:", error)
+    return []
   }
-  return []
+  return data || []
 }
 
 export async function addSale(saleData: any) {
-  const tables = ['vendas', 'sales']
-  for (const table of tables) {
-    const { data, error } = await supabase
-      .from(table)
-      .insert([saleData])
-      .select()
-    
-    if (!error) {
-      await revalidateAdmin()
-      return data[0]
-    }
-  }
-  throw new Error('Falha ao registrar venda')
+  const { data, error } = await supabase
+    .from('vendas')
+    .insert([saleData])
+    .select()
+  
+  if (error) throw new Error('Falha ao registrar venda: ' + error.message)
+  
+  await revalidateAdmin()
+  return data[0]
+}
+
+export async function updateSale(id: string, saleData: any) {
+  const { data, error } = await supabase
+    .from('vendas')
+    .update(saleData)
+    .eq('id', id)
+    .select()
+
+  if (error) throw new Error('Falha ao atualizar venda: ' + error.message)
+  
+  await revalidateAdmin()
+  return data[0]
+}
+
+export async function deleteSale(id: string) {
+  const { error } = await supabase
+    .from('vendas')
+    .delete()
+    .eq('id', id)
+
+  if (error) throw new Error('Falha ao deletar venda: ' + error.message)
+  
+  await revalidateAdmin()
+  return { success: true }
 }
 
 // --- GESTÃO DE DESPESAS ---
 
 export async function getExpenses() {
-  const tables = ['despesas', 'expenses']
-  for (const table of tables) {
-    const { data, error } = await supabase
-      .from(table)
-      .select('*')
-      .order('date', { ascending: false })
-    
-    if (!error && data) return data
+  const { data, error } = await supabase
+    .from('despesas')
+    .select('*')
+    .order('date', { ascending: false })
+  
+  if (error) {
+    console.error("Erro ao buscar despesas:", error)
+    return []
   }
-  return []
+  return data || []
 }
 
 export async function addExpense(expenseData: any) {
-  const tables = ['despesas', 'expenses']
-  for (const table of tables) {
-    const { data, error } = await supabase
-      .from(table)
-      .insert([expenseData])
-      .select()
-    
-    if (!error) {
-      await revalidateAdmin()
-      return data[0]
-    }
-  }
-  throw new Error('Falha ao registrar despesa')
+  const { data, error } = await supabase
+    .from('despesas')
+    .insert([expenseData])
+    .select()
+  
+  if (error) throw new Error('Falha ao registrar despesa: ' + error.message)
+  
+  await revalidateAdmin()
+  return data[0]
+}
+
+export async function updateExpense(id: string, expenseData: any) {
+  const { data, error } = await supabase
+    .from('despesas')
+    .update(expenseData)
+    .eq('id', id)
+    .select()
+
+  if (error) throw new Error('Falha ao atualizar despesa: ' + error.message)
+  
+  await revalidateAdmin()
+  return data[0]
+}
+
+export async function deleteExpense(id: string) {
+  const { error } = await supabase
+    .from('despesas')
+    .delete()
+    .eq('id', id)
+
+  if (error) throw new Error('Falha ao deletar despesa: ' + error.message)
+  
+  await revalidateAdmin()
+  return { success: true }
 }
 
 // --- GESTÃO DE SERVIÇOS ---
@@ -343,7 +385,6 @@ export async function uploadProfileImage(formData: FormData) {
 
 export async function updateProfile(profileData: any) {
   try {
-    const tables = ['profiles', 'perfil']
     const cleanData = { 
       name: profileData.name,
       whatsapp_number: profileData.whatsapp_number,
@@ -355,24 +396,34 @@ export async function updateProfile(profileData: any) {
       slot_interval: profileData.slot_interval
     }
 
-    for (const table of tables) {
-      const { data: existing, error: fetchError } = await supabase.from(table).select('id').maybeSingle()
-      
-      if (existing) {
-        const { error: updateError } = await supabase.from(table).update(cleanData).eq('id', existing.id)
-        if (!updateError) { 
-          revalidatePath('/admin', 'layout')
-          return { success: true } 
-        }
-      } else {
-        const { error: insertError } = await supabase.from(table).insert([cleanData])
-        if (!insertError) { 
-          revalidatePath('/admin', 'layout')
-          return { success: true } 
-        }
-      }
+    // Tenta primeiro na tabela 'profiles', se falhar tenta na 'perfil'
+    // Usamos o supabaseAdmin para ignorar RLS
+    const { data: existing, error: fetchError } = await supabase
+      .from('profiles')
+      .select('id')
+      .maybeSingle()
+
+    if (fetchError && fetchError.code !== 'PGRST116') {
+       // Se der erro de tabela não encontrada, tentamos a outra
+       const { data: pExisting, error: pFetchError } = await supabase
+         .from('perfil')
+         .select('id')
+         .maybeSingle()
+       
+       if (pExisting) {
+         await supabase.from('perfil').update(cleanData).eq('id', pExisting.id)
+       } else {
+         await supabase.from('perfil').insert([cleanData])
+       }
+    } else if (existing) {
+      await supabase.from('profiles').update(cleanData).eq('id', existing.id)
+    } else {
+      await supabase.from('profiles').insert([cleanData])
     }
-    throw new Error('Não foi possível salvar em nenhuma tabela de perfil.')
+
+    revalidatePath('/admin', 'layout')
+    revalidatePath('/')
+    return { success: true }
   } catch (error: any) {
     console.error('Update Profile Error:', error)
     return { success: false, error: error.message || 'Falha ao atualizar perfil' }

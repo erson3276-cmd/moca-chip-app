@@ -11,9 +11,10 @@ import {
   TrendingDown,
   PieChart,
   Save,
-  X
+  X,
+  Edit2
 } from 'lucide-react'
-import { addExpense, getExpenses } from '@/app/actions/admin'
+import { addExpense, getExpenses, updateExpense, deleteExpense } from '@/app/actions/admin'
 import { format, parseISO } from 'date-fns'
 import { ptBR } from 'date-fns/locale'
 
@@ -22,6 +23,7 @@ export default function DespesasPage() {
   const [loading, setLoading] = useState(true)
   const [isModalOpen, setIsModalOpen] = useState(false)
   const [saving, setSaving] = useState(false)
+  const [editingId, setEditingId] = useState<string | null>(null)
 
   const [formData, setFormData] = useState({
     description: '',
@@ -45,17 +47,46 @@ export default function DespesasPage() {
     e.preventDefault()
     setSaving(true)
     try {
-      await addExpense({
+      const payload = {
         ...formData,
-        amount: parseFloat(formData.amount.replace(',', '.'))
-      })
+        amount: parseFloat(formData.amount.toString().replace(',', '.'))
+      }
+
+      if (editingId) {
+        await updateExpense(editingId, payload)
+      } else {
+        await addExpense(payload)
+      }
+
       await loadData()
       setIsModalOpen(false)
+      setEditingId(null)
       setFormData({ description: '', amount: '', category: 'Outros', date: format(new Date(), 'yyyy-MM-dd') })
     } catch (error: any) {
       alert('Erro ao salvar despesa: ' + error.message)
     }
     setSaving(false)
+  }
+
+  const handleDelete = async (id: string) => {
+    if (!confirm('Tem certeza que deseja excluir esta despesa?')) return
+    try {
+      await deleteExpense(id)
+      await loadData()
+    } catch (e: any) {
+      alert('Erro ao excluir: ' + e.message)
+    }
+  }
+
+  const openEdit = (expense: any) => {
+    setEditingId(expense.id)
+    setFormData({
+      description: expense.description,
+      amount: expense.amount.toString(),
+      category: expense.category,
+      date: expense.date ? format(parseISO(expense.date), 'yyyy-MM-dd') : format(new Date(), 'yyyy-MM-dd')
+    })
+    setIsModalOpen(true)
   }
 
   const totalDespesas = expenses.reduce((acc, exp) => acc + (exp.amount || 0), 0)
@@ -70,7 +101,11 @@ export default function DespesasPage() {
           <p className="text-sm text-gray-400 mt-1 uppercase tracking-widest font-bold opacity-60 text-[10px]">Controle de saídas e custos fixos</p>
         </div>
         <button 
-          onClick={() => setIsModalOpen(true)}
+          onClick={() => {
+            setEditingId(null)
+            setFormData({ description: '', amount: '', category: 'Outros', date: format(new Date(), 'yyyy-MM-dd') })
+            setIsModalOpen(true)
+          }}
           className="flex items-center gap-3 px-8 py-4 bg-red-500/10 hover:bg-red-500 text-red-500 hover:text-white border border-red-500/20 rounded-2xl text-[11px] font-black uppercase tracking-widest transition-all shadow-xl shadow-red-500/10"
         >
           <Plus size={18} /> Lançar Despesa
@@ -96,8 +131,8 @@ export default function DespesasPage() {
                   <PieChart size={28} />
                </div>
                <div>
-                  <p className="text-[10px] text-gray-400 font-black uppercase tracking-[0.2em]">Principais Categorias</p>
-                  <p className="text-white text-sm font-bold mt-1">Aluguel, Produtos, Energia</p>
+                  <p className="text-[10px] text-gray-400 font-black uppercase tracking-[0.2em]">Gastos Recentes</p>
+                  <p className="text-white text-sm font-bold mt-1">Sincronizado com Relatórios</p>
                </div>
             </div>
          </div>
@@ -117,14 +152,15 @@ export default function DespesasPage() {
                      <th className="p-6 text-[10px] font-black uppercase tracking-widest text-gray-500">Descrição</th>
                      <th className="p-6 text-[10px] font-black uppercase tracking-widest text-gray-500">Categoria</th>
                      <th className="p-6 text-[10px] font-black uppercase tracking-widest text-gray-500 text-right">Valor</th>
+                     <th className="p-6 text-[10px] font-black uppercase tracking-widest text-gray-500 text-center">Ações</th>
                   </tr>
                </thead>
                <tbody className="divide-y divide-white/5">
-                  {expenses.map((expense, idx) => (
-                    <tr key={idx} className="hover:bg-white/[0.01] transition-colors group">
+                  {expenses.map((expense) => (
+                    <tr key={expense.id} className="hover:bg-white/[0.01] transition-colors group">
                        <td className="p-6">
                           <span className="text-xs font-bold text-gray-500 group-hover:text-white transition-all">
-                             {format(parseISO(expense.date), 'dd/MM/yyyy')}
+                             {expense.date ? format(parseISO(expense.date), 'dd/MM/yyyy') : '--/--/----'}
                           </span>
                        </td>
                        <td className="p-6">
@@ -138,11 +174,27 @@ export default function DespesasPage() {
                        <td className="p-6 text-right text-red-400 font-black text-sm">
                           - R$ {(expense.amount || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
                        </td>
+                       <td className="p-6">
+                          <div className="flex items-center justify-center gap-2">
+                             <button 
+                               onClick={() => openEdit(expense)}
+                               className="p-2 text-gray-500 hover:text-[#5E41FF] hover:bg-[#5E41FF]/10 rounded-lg transition-all"
+                             >
+                                <Edit2 size={16} />
+                             </button>
+                             <button 
+                               onClick={() => handleDelete(expense.id)}
+                               className="p-2 text-gray-500 hover:text-red-500 hover:bg-red-500/10 rounded-lg transition-all"
+                             >
+                                <Trash2 size={16} />
+                             </button>
+                          </div>
+                       </td>
                     </tr>
                   ))}
                   {expenses.length === 0 && (
                     <tr>
-                       <td colSpan={4} className="p-24 text-center text-gray-600 font-medium italic opacity-40 uppercase tracking-widest text-xs">
+                       <td colSpan={5} className="p-24 text-center text-gray-600 font-medium italic opacity-40 uppercase tracking-widest text-xs">
                           Nenhuma despesa registrada.
                        </td>
                     </tr>
@@ -152,7 +204,7 @@ export default function DespesasPage() {
          </div>
       </div>
 
-      {/* Modal - Lançar Despesa */}
+      {/* Modal - Lançar/Editar Despesa */}
       {isModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-6 animate-in fade-in duration-300">
           <div className="absolute inset-0 bg-black/90 backdrop-blur-xl" onClick={() => setIsModalOpen(false)} />
@@ -162,7 +214,7 @@ export default function DespesasPage() {
                   <div className="w-12 h-12 rounded-2xl bg-red-500/10 flex items-center justify-center text-red-500 ring-1 ring-red-500/20">
                     <TrendingDown size={24} />
                   </div>
-                   <h2 className="text-xl font-black italic uppercase tracking-tighter text-white">Nova Despesa</h2>
+                   <h2 className="text-xl font-black italic uppercase tracking-tighter text-white">{editingId ? 'Editar Despesa' : 'Nova Despesa'}</h2>
                 </div>
                 <button onClick={() => setIsModalOpen(false)} className="p-3 text-gray-500 hover:text-white transition-all"><X size={24} /></button>
              </div>
@@ -227,7 +279,7 @@ export default function DespesasPage() {
                   className="w-full py-5 bg-red-600 text-white rounded-3xl text-sm font-black uppercase tracking-widest shadow-2xl shadow-red-600/30 hover:scale-[1.02] active:scale-[0.98] transition-all flex items-center justify-center gap-3 disabled:opacity-50"
                 >
                    {saving ? <Loader2 className="animate-spin" /> : <Save size={20} />}
-                   Confirmar Saída
+                   {editingId ? 'Salvar Alterações' : 'Confirmar Saída'}
                 </button>
              </form>
           </div>
