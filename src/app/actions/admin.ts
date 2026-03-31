@@ -13,6 +13,35 @@ async function revalidateAdmin() {
 
 // --- GESTÃO DE AGENDAMENTOS ---
 
+export async function getAppointments() {
+  const tables = ['agendamentos', 'appointments']
+  for (const table of tables) {
+    const { data, error } = await supabase
+      .from(table)
+      .select('*, customers:customer_id(name, whatsapp), services:service_id(name, price, duration_minutes, color)')
+      .order('start_time', { ascending: true })
+    
+    if (!error && data) return data
+  }
+  return []
+}
+
+export async function addAppointment(appointmentData: any) {
+  const tables = ['agendamentos', 'appointments']
+  for (const table of tables) {
+    const { data, error } = await supabase
+      .from(table)
+      .insert([appointmentData])
+      .select()
+    
+    if (!error) {
+      await revalidateAdmin()
+      return data[0]
+    }
+  }
+  throw new Error('Falha ao criar agendamento')
+}
+
 export async function updateAppointmentStatus(id: string, status: string) {
   const tables = ['agendamentos', 'appointments']
   for (const table of tables) {
@@ -45,7 +74,110 @@ export async function deleteAppointment(id: string) {
   throw new Error('Falha ao deletar agendamento')
 }
 
+/**
+ * Finaliza um atendimento, cria a venda e marca como pago
+ */
+export async function completeAppointmentCheckout(appointmentId: string, saleData: any) {
+  // 1. Criar a venda
+  await addSale(saleData)
+  
+  // 2. Marcar agendamento como finalizado
+  await updateAppointmentStatus(appointmentId, 'finalizado')
+  
+  return { success: true }
+}
+
+// --- GESTÃO DE VENDAS (FINANCEIRO) ---
+
+export async function getSales() {
+  const tables = ['vendas', 'sales']
+  for (const table of tables) {
+    const { data, error } = await supabase
+      .from(table)
+      .select('*, customers:customer_id(name)')
+      .order('created_at', { ascending: false })
+    
+    if (!error && data) return data
+  }
+  return []
+}
+
+export async function addSale(saleData: any) {
+  const tables = ['vendas', 'sales']
+  for (const table of tables) {
+    const { data, error } = await supabase
+      .from(table)
+      .insert([saleData])
+      .select()
+    
+    if (!error) {
+      await revalidateAdmin()
+      return data[0]
+    }
+  }
+  throw new Error('Falha ao registrar venda')
+}
+
+// --- GESTÃO DE DESPESAS ---
+
+export async function getExpenses() {
+  const tables = ['despesas', 'expenses']
+  for (const table of tables) {
+    const { data, error } = await supabase
+      .from(table)
+      .select('*')
+      .order('date', { ascending: false })
+    
+    if (!error && data) return data
+  }
+  return []
+}
+
+export async function addExpense(expenseData: any) {
+  const tables = ['despesas', 'expenses']
+  for (const table of tables) {
+    const { data, error } = await supabase
+      .from(table)
+      .insert([expenseData])
+      .select()
+    
+    if (!error) {
+      await revalidateAdmin()
+      return data[0]
+    }
+  }
+  throw new Error('Falha ao registrar despesa')
+}
+
 // --- GESTÃO DE SERVIÇOS ---
+
+export async function getServices() {
+  const tables = ['servicos', 'services']
+  for (const table of tables) {
+    const { data, error } = await supabase
+      .from(table)
+      .select('*')
+      .order('name')
+    if (!error && data) return data
+  }
+  return []
+}
+
+export async function addService(serviceData: any) {
+  const tables = ['servicos', 'services']
+  for (const table of tables) {
+    const { data, error } = await supabase
+      .from(table)
+      .insert([serviceData])
+      .select()
+    
+    if (!error) {
+      await revalidateAdmin()
+      return data[0]
+    }
+  }
+  throw new Error('Falha ao criar serviço')
+}
 
 export async function updateService(id: string, serviceData: any) {
   const tables = ['servicos', 'services']
@@ -63,26 +195,10 @@ export async function updateService(id: string, serviceData: any) {
   throw new Error('Falha ao atualizar serviço')
 }
 
-export async function createService(serviceData: any) {
-  const tables = ['servicos', 'services']
-  for (const table of tables) {
-    const { error } = await supabase
-      .from(table)
-      .insert([serviceData])
-    
-    if (!error) {
-      await revalidateAdmin()
-      return { success: true }
-    }
-  }
-  throw new Error('Falha ao criar serviço')
-}
-
-// --- GESTÃO DE WHATSAPP (EVOLUTION API) ---
+// --- WHATSAPP E INTEGRAÇÕES ---
 
 export async function sendWhatsAppMessage(message: string, phone: string) {
   const cleanPhone = phone.replace(/\D/g, '')
-  // Suporte a números do Brasil (adicionando 55 se não houver)
   const finalPhone = cleanPhone.length <= 11 ? `55${cleanPhone}` : cleanPhone
   
   try {
@@ -105,69 +221,35 @@ export async function sendWhatsAppMessage(message: string, phone: string) {
   }
 }
 
-// --- GESTÃO DE PERFIL E IDENTIDADE ---
-
-export async function updateProfile(profileData: any) {
-  const tables = ['profiles', 'perfil']
-  for (const table of tables) {
-    const { data: existing } = await supabase.from(table).select('id').single()
-    
-    if (existing) {
-      const { error } = await supabase.from(table).update(profileData).eq('id', existing.id)
-      if (!error) {
-        await revalidateAdmin()
-        return { success: true }
-      }
-    } else {
-      const { error } = await supabase.from(table).insert([profileData])
-      if (!error) {
-        await revalidateAdmin()
-        return { success: true }
-      }
-    }
-  }
-  throw new Error('Falha ao atualizar perfil no Supabase.')
+export async function sendManagerTalkMessage(phone: string, text: string) {
+  return await sendWhatsAppMessage(text, phone)
 }
 
-// --- SEGURANÇA VIP E BLOQUEIO ---
-
-export async function validateVIP(whatsapp: string) {
-  const tables = ['clientes', 'customers']
-  const cleanWhatsapp = whatsapp.replace(/\D/g, '')
-
-  for (const table of tables) {
-    const { data, error } = await supabase
-      .from(table)
-      .select('id, name, is_blocked')
-      .eq('whatsapp', cleanWhatsapp)
-      .single()
-
-    if (error || !data) continue
-    
-    if (data.is_blocked) {
-       return { status: 'blocked', message: 'Indisponível no momento' }
-    }
-    return { status: 'ok', client: data }
+export async function testEvolutionConnection() {
+  try {
+    const response = await fetch(`${process.env.EVOLUTION_API_URL}/instance/fetchInstances`, {
+      headers: { 'apikey': process.env.EVOLUTION_API_KEY || '' }
+    })
+    return response.ok ? { success: true } : { success: false }
+  } catch {
+    return { success: false }
   }
-  return { status: 'not_found' }
 }
 
-// --- AUTENTICAÇÃO ADMINISTRATIVA ---
+// --- SEGURANÇA E BLOQUEIO ---
 
 export async function adminLogin(password: string) {
   const adminPwd = process.env.ADMIN_PASSWORD || 'moca2024'
-  
   if (password === adminPwd) {
     const cookieStore = await cookies()
     cookieStore.set('admin_session', 'true', {
       httpOnly: true,
       secure: process.env.NODE_ENV === 'production',
       sameSite: 'lax',
-      maxAge: 60 * 60 * 24 * 7 // 1 semana
+      maxAge: 60 * 60 * 24 * 7
     })
     return { success: true }
   }
-  
   return { success: false, error: 'Senha incorreta' }
 }
 
@@ -175,8 +257,6 @@ export async function adminLogout() {
   const cookieStore = await cookies()
   cookieStore.delete('admin_session')
 }
-
-// --- GESTÃO DE BLOQUEIO DE CLIENTES ---
 
 export async function toggleBlockCustomer(id: string, isBlocked: boolean) {
   const tables = ['clientes', 'customers']
@@ -209,7 +289,6 @@ export async function getCustomers() {
 export async function addCustomer(customerData: any) {
   const tables = ['clientes', 'customers']
   const cleanWhatsapp = customerData.whatsapp.replace(/\D/g, '')
-  
   for (const table of tables) {
     const { data, error } = await supabase
       .from(table)
@@ -219,4 +298,35 @@ export async function addCustomer(customerData: any) {
     if (!error && data) return data
   }
   throw new Error('Falha ao adicionar cliente')
+}
+
+export async function updateProfile(profileData: any) {
+  const tables = ['profiles', 'perfil']
+  for (const table of tables) {
+    const { data: existing } = await supabase.from(table).select('id').single()
+    if (existing) {
+      const { error } = await supabase.from(table).update(profileData).eq('id', existing.id)
+      if (!error) { await revalidateAdmin(); return { success: true } }
+    } else {
+      const { error } = await supabase.from(table).insert([profileData])
+      if (!error) { await revalidateAdmin(); return { success: true } }
+    }
+  }
+  throw new Error('Falha ao atualizar perfil.')
+}
+
+export async function validateVIP(whatsapp: string) {
+  const tables = ['clientes', 'customers']
+  const cleanWhatsapp = whatsapp.replace(/\D/g, '')
+  for (const table of tables) {
+    const { data, error } = await supabase
+      .from(table)
+      .select('id, name, is_blocked')
+      .eq('whatsapp', cleanWhatsapp)
+      .single()
+    if (error || !data) continue
+    if (data.is_blocked) return { status: 'blocked', message: 'Indisponível no momento' }
+    return { status: 'ok', client: data }
+  }
+  return { status: 'not_found' }
 }
