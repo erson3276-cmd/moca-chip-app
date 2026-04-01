@@ -75,11 +75,10 @@ export async function addAppointment(appointmentData: any) {
     throw new Error('Agendamentos só podem ser feitos em horários cheios (00) ou meia hora (30)')
   }
 
-  // 2. Não permitir agendamento em horários passados (Brasília = UTC-3)
-  const nowBrasilia = new Date()
-  nowBrasilia.setHours(nowBrasilia.getHours() - 3) // Converter para UTC
+  // 2. Não permitir agendamento em horários passados
+  const now = new Date()
   const appointmentTime = new Date(appointmentData.start_time)
-  if (appointmentTime <= nowBrasilia) {
+  if (appointmentTime <= now) {
     throw new Error('Não é possível agendar em horários que já passaram')
   }
 
