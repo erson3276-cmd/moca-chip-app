@@ -316,12 +316,12 @@ export default function AgendaPage() {
                            const width = apt.totalTracks > 1 ? (100 / apt.totalTracks) : 100
                            const left = apt.trackIndex * width
 
-                          return (
-                            <div 
-                              key={apt.id}
-                              style={{ ...style, width: `${width}%`, left: `${left}%` }}
-                              className={`absolute p-1 z-30 transition-all duration-300 ${isCancelled ? 'opacity-40 grayscale pointer-events-none' : 'hover:z-50 hover:scale-[1.02]'}`}
-                            >
+                           return (
+                             <div 
+                               key={apt.id}
+                               style={{ ...style, width: `${width}%`, left: `${left}%` }}
+                               className={`absolute p-1 z-30 transition-all duration-300 group/card ${isCancelled ? 'opacity-40 grayscale' : 'hover:z-50 hover:scale-[1.02]'}`}
+                             >
                                <div className={`h-full w-full rounded-2xl border p-3 flex flex-col justify-between overflow-hidden shadow-xl
                                   ${isFinished ? 'bg-emerald-500/20 border-emerald-500/30 text-emerald-100 shadow-emerald-500/10' : 
                                     isCancelled ? 'bg-gray-800/20 border-gray-700 text-gray-500' : 

@@ -1,0 +1,1 @@
+SELECT a.id, a.start_time, a.end_time, a.status, c.name as customer_name, s.name as service_name, s.duration_minutes FROM appointments a LEFT JOIN customers c ON c.id = a.customer_id LEFT JOIN services s ON s.id = a.service_id ORDER BY a.start_time ASC LIMIT 50
