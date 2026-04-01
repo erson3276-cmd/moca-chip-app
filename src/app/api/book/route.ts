@@ -7,22 +7,23 @@ export async function POST(request: Request) {
     const { name, whatsapp, serviceId, startTime, endTime } = await request.json()
     const cleanWhatsapp = whatsapp.replace(/\D/g, '')
 
-    // 0. Verificação de Segurança VIP (Somente Clientes Cadastrados)
+    // 0. Verificação de Segurança VIP (Modo Blocklist - Permite Novos)
     const tables = ['clientes', 'customers']
     let customer = null
-
+    
+    // Tentar encontrar o cliente (com e sem prefixo 55 se necessário)
     for (const table of tables) {
-      const { data, error } = await supabase
+      const { data } = await supabase
         .from(table)
         .select('id, name, is_blocked')
-        .eq('whatsapp', cleanWhatsapp)
+        .or(`whatsapp.eq.${cleanWhatsapp},whatsapp.eq.55${cleanWhatsapp},whatsapp.eq.${cleanWhatsapp.replace(/^55/, '')}`)
         .maybeSingle()
       
       if (data) {
         if (data.is_blocked) {
           return NextResponse.json({ 
             success: false, 
-            error: 'Agendamento indisponível para este número. Entre em contato com Suanne Chagas.' 
+            error: 'Agendamento indisponível para este número. Entre em contato com o salão.' 
           }, { status: 403 })
         }
         customer = data
@@ -30,11 +31,22 @@ export async function POST(request: Request) {
       }
     }
 
+    // Se não existir, vamos criar um perfil básico para esta nova cliente
     if (!customer) {
-      return NextResponse.json({ 
-        success: false, 
-        error: 'Acesso Restrito: Seu número não foi encontrado em nossa base VIP. Entre em contato com Suanne Chagas para realizar seu cadastro.' 
-      }, { status: 403 })
+       const createTable = 'clientes' // Tabela padrão
+       const { data: newCust, error: createErr } = await supabase
+         .from(createTable)
+         .insert([{ name: name || 'Nova Cliente', whatsapp: cleanWhatsapp, is_blocked: false }])
+         .select()
+         .single()
+       
+       if (!createErr && newCust) {
+          customer = newCust
+       } else {
+          // Fallback final: Se não conseguir criar agora, tenta agendar com um ID nulo ou UUID fake se a tabela permitir
+          // Mas o ideal é ter o customer_id
+          customer = { id: null } // Isso pode falhar dependendo da constraint
+       }
     }
 
     // 2. Criar o agendamento (Motor Híbrido)

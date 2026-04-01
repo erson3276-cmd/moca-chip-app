@@ -105,16 +105,16 @@ export async function updateAppointmentStatus(id: string, status: string) {
 
           if (status === 'cancelado') {
             const msg = await processTemplate('cancelado', msgData)
-            await sendWhatsAppMessage(msg, apt.customers.whatsapp)
+            await sendWhatsAppMessage(msg, apt.customers?.whatsapp || '')
           } else if (status === 'finalizado') {
             // Pode enviar mensagem de agradecimento se desejar
           } else if (status === 'faltou') {
             const msg = await processTemplate('falta', msgData)
-            await sendWhatsAppMessage(msg, apt.customers.whatsapp)
+            await sendWhatsAppMessage(msg, apt.customers?.whatsapp || '')
           }
         }
       } catch (waErr) {
-        console.error("Erro ao enviar mensagem automática:", waErr)
+        console.error("Erro (Silenciado) ao enviar mensagem automática:", waErr)
       }
 
       await revalidateAdmin()
@@ -374,10 +374,17 @@ export async function sendWhatsAppMessage(message: string, phone: string) {
         linkPreview: false
       })
     })
+    
+    if (!response.ok) {
+       const errText = await response.text()
+       console.error('Erro Evolution API (Status):', response.status, errText)
+       return { error: 'API retornou erro ' + response.status }
+    }
+
     return await response.json()
-  } catch (error) {
-    console.error('Erro ao enviar WhatsApp:', error)
-    return { error: 'Falha na conexão com API Evolution' }
+  } catch (error: any) {
+    console.error('Erro ao enviar WhatsApp:', error.message)
+    return { error: 'Falha na conexão com API Evolution: ' + error.message }
   }
 }
 
@@ -403,6 +410,10 @@ export async function testEvolutionConnection() {
       cache: 'no-store'
     })
     
+    if (!response.ok) {
+       return { status: 'disconnected', error: 'Instância offline ou erro de API' }
+    }
+
     let data = await response.json()
     console.log(`[EVOLUTION] Estado atual da instância ${instance}:`, data.instance?.state || data.status)
 
@@ -493,15 +504,15 @@ export async function getCustomers() {
 
 export async function addCustomer(customerData: any) {
   const tables = ['clientes', 'customers']
-  // Limpando o telefone antes de salvar
-  if (customerData.whatsapp) {
-    customerData.whatsapp = customerData.whatsapp.replace(/\D/g, '')
+  // Limpando o telefone antes de salvar (Null-Safe)
+  if (customerData?.whatsapp) {
+    customerData.whatsapp = String(customerData.whatsapp).replace(/\D/g, '')
   }
   
   // Forçar desbloqueado por padrão para novos clientes
   const cleanData = {
     ...customerData,
-    is_blocked: false
+    is_blocked: customerData?.is_blocked || false
   }
   
   for (const table of tables) {
