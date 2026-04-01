@@ -143,17 +143,14 @@ export async function updateAppointmentStatus(id: string, status: string) {
 export async function deleteAppointment(id: string) {
   const tables = ['agendamentos', 'appointments']
   for (const table of tables) {
-    const { error } = await supabase
-      .from(table)
-      .delete()
-      .eq('id', id)
-    
+    const { error } = await supabase.from(table).delete().eq('id', id)
     if (!error) {
       await revalidateAdmin()
+      revalidatePath('/admin/agenda')
       return { success: true }
     }
   }
-  throw new Error('Falha ao deletar agendamento')
+  throw new Error('Falha ao excluir agendamento')
 }
 
 /**
@@ -516,48 +513,6 @@ export async function getCustomers() {
   return []
 }
 
-export async function addCustomer(customerData: any) {
-  const tables = ['clientes', 'customers']
-  // Limpando o telefone antes de salvar (Null-Safe)
-  if (customerData?.whatsapp) {
-    customerData.whatsapp = String(customerData.whatsapp).replace(/\D/g, '')
-  }
-  
-  // Forçar desbloqueado por padrão para novos clientes
-  const cleanData = {
-    ...customerData,
-    is_blocked: customerData?.is_blocked || false
-  }
-  
-  for (const table of tables) {
-    const { data, error } = await supabase
-      .from(table)
-      .insert([cleanData])
-      .select()
-    
-    if (!error) {
-      revalidatePath('/admin', 'layout')
-      return data[0]
-    }
-  }
-  throw new Error('Falha ao criar cliente')
-}
-
-export async function toggleBlockCustomer(id: string, isBlocked: boolean) {
-  const tables = ['clientes', 'customers']
-  for (const table of tables) {
-    const { error } = await supabase
-      .from(table)
-      .update({ is_blocked: isBlocked })
-      .eq('id', id)
-    
-    if (!error) {
-      revalidatePath('/admin', 'layout')
-      return { success: true }
-    }
-  }
-  throw new Error('Falha ao atualizar status do cliente')
-}
 
 // --- SEGURANÇA E BLOQUEIO ---
 
@@ -620,6 +575,7 @@ export async function uploadProfileImage(formData: FormData) {
   }
 }
 
+
 export async function updateProfile(profileData: any) {
   try {
     const cleanData: any = { 
@@ -674,4 +630,67 @@ export async function validateVIP(whatsapp: string) {
     return { status: 'ok', client: data }
   }
   return { status: 'not_found' }
+}
+
+export async function deleteService(id: string) {
+  const tables = ['servicos', 'services']
+  for (const table of tables) {
+    const { error } = await supabase.from(table).delete().eq('id', id)
+    if (!error) {
+      await revalidateAdmin()
+      return { success: true }
+    }
+  }
+  throw new Error('Falha ao excluir serviço')
+}
+
+export async function addCustomer(customerData: any) {
+  const tables = ['clientes', 'customers']
+  const cleanData = { ...customerData, whatsapp: customerData.whatsapp.replace(/\D/g, '') }
+  for (const table of tables) {
+    const { data, error } = await supabase.from(table).insert([cleanData]).select().maybeSingle()
+    if (!error && data) {
+      await revalidateAdmin()
+      return data
+    }
+  }
+  throw new Error('Falha ao criar cliente')
+}
+
+export async function updateCustomer(id: string, customerData: any) {
+  const tables = ['clientes', 'customers']
+  const cleanData = { ...customerData, whatsapp: customerData.whatsapp ? customerData.whatsapp.replace(/\D/g, '') : undefined }
+  for (const table of tables) {
+    const { error } = await supabase.from(table).update(cleanData).eq('id', id)
+    if (!error) {
+      await revalidateAdmin()
+      return { success: true }
+    }
+  }
+  throw new Error('Falha ao atualizar cliente')
+}
+
+export async function deleteCustomer(id: string) {
+  const tables = ['clientes', 'customers']
+  for (const table of tables) {
+    const { error } = await supabase.from(table).delete().eq('id', id)
+    if (!error) {
+      await revalidateAdmin()
+      return { success: true }
+    }
+  }
+  throw new Error('Falha ao excluir cliente')
+}
+
+export async function toggleBlockCustomer(id: string, currentlyBlocked: boolean) {
+  const tables = ['clientes', 'customers']
+  const newStatus = !currentlyBlocked
+  for (const table of tables) {
+    const { error } = await supabase.from(table).update({ is_blocked: newStatus }).eq('id', id)
+    if (!error) {
+       await revalidateAdmin()
+       return { success: true, newStatus }
+    }
+  }
+  throw new Error('Falha ao alterar status de bloqueio')
 }

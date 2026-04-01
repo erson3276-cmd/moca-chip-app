@@ -38,6 +38,25 @@ export async function POST(request: Request) {
       }, { status: 403 })
     }
 
+    // 1. Verificação de Sobreposição (Anti-Overlap)
+    const aptTables = ['agendamentos', 'appointments']
+    for (const table of aptTables) {
+      const { data: overlaps, error: overlapError } = await supabase
+        .from(table)
+        .select('id')
+        .neq('status', 'cancelado')
+        .filter('start_time', 'lt', endTime)
+        .filter('end_time', 'gt', startTime)
+        .limit(1)
+
+      if (overlaps && overlaps.length > 0) {
+        return NextResponse.json({ 
+          success: false, 
+          error: 'Desculpe, este horário acabou de ser preenchido ou conflita com outro agendamento. Por favor, escolha outro horário.' 
+        }, { status: 409 })
+      }
+    }
+
     // 2. Criar o agendamento (Motor Híbrido)
     let aptData = {
       customer_id: customer.id,
@@ -47,7 +66,6 @@ export async function POST(request: Request) {
       status: 'agendado'
     }
 
-    const aptTables = ['agendamentos', 'appointments']
     let appointment = null
     let appointmentError = null
 
@@ -55,7 +73,7 @@ export async function POST(request: Request) {
       const { data, error } = await supabase
         .from(table)
         .insert(aptData)
-        .select('*') // Removido join problemático
+        .select('*')
         .maybeSingle()
       
       if (!error && data) {
