@@ -105,21 +105,50 @@ export default function AgendaPage() {
     fetchData()
   }, [currentDate])
 
-  // Lógica de Renderização de Cartões (Top e Height) - usando hora local
+  // Fuso horário de Brasília (UTC-3)
+  const TIMEZONE = 'America/Sao_Paulo'
+
+  // Converter UTC para Brasília e obter hora
+  const getBrasiliaHour = (dateStr: string) => {
+    const d = parseISO(dateStr)
+    const formatter = new Intl.DateTimeFormat('en-US', {
+      timeZone: TIMEZONE,
+      hour: '2-digit',
+      hour12: false,
+      minute: '2-digit'
+    })
+    const parts = formatter.formatToParts(d)
+    const hour = parseInt(parts.find(p => p.type === 'hour')?.value || '0')
+    const minute = parseInt(parts.find(p => p.type === 'minute')?.value || '0')
+    return { hour, minute }
+  }
+
+  // Formatar data para Brasília
+  const formatBrasilia = (dateStr: string, formatStr: string) => {
+    return format(parseISO(dateStr), formatStr, { timeZone: TIMEZONE })
+  }
+
+  // Lógica de Renderização de Cartões (Top e Height) - usando hora de Brasília
   const getCardPosition = (startTimeStr: string, duration: number) => {
-    const d = parseISO(startTimeStr)
-    // Usar hora local do usuário
+    const { hour, minute } = getBrasiliaHour(startTimeStr)
     const hourStart = 0
-    const minutesFromStartOfDay = (d.getHours() - hourStart) * 60 + d.getMinutes()
+    const minutesFromStartOfDay = (hour - hourStart) * 60 + minute
     
     const top = (minutesFromStartOfDay / 30) * 64
     const height = (duration / 30) * 64
     return { top: `${top}px`, height: `${Math.max(height - 2, 20)}px` }
   }
 
+  // Filtrar agendamentos do dia (usando Brasília)
+  const isSameDayBrasilia = (dateStr: string, day: Date) => {
+    const aptDateStr = formatBrasilia(dateStr, 'yyyy-MM-dd')
+    const dayStr = format(day, 'yyyy-MM-dd', { timeZone: TIMEZONE })
+    return aptDateStr === dayStr
+  }
+
   // Nova lógica de detecção de sobreposição - agrupa agendamentos que conflitam
   const getDailyAppointments = (day: Date) => {
-    const dayApts = appointments.filter(apt => isSameDay(parseISO(apt.start_time), day))
+    const dayApts = appointments.filter(apt => isSameDayBrasilia(apt.start_time, day))
     
     // Ordenar por horário de início
     dayApts.sort((a, b) => parseISO(a.start_time).getTime() - parseISO(b.start_time).getTime())
@@ -334,7 +363,7 @@ export default function AgendaPage() {
                                   <div className="space-y-1">
                                      <div className="flex items-center justify-between">
                                         <span className="text-[9px] font-black uppercase tracking-widest flex items-center gap-1 opacity-70">
-                                           <Clock size={10} /> {format(parseISO(apt.start_time), 'HH:mm')}
+                                           <Clock size={10} /> {formatBrasilia(apt.start_time, 'HH:mm')}
                                         </span>
                                         {isFinished && <CheckCircle2 size={14} className="text-emerald-500" />}
                                      </div>
