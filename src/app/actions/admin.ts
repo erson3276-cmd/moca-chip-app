@@ -45,15 +45,26 @@ export async function processTemplate(templateKey: keyof typeof TEMPLATES, data:
 
 export async function getAppointments() {
   const tables = ['agendamentos', 'appointments']
+  let allAppointments: any[] = []
+  
   for (const table of tables) {
-    const { data, error } = await supabase
-      .from(table)
-      .select('*, customers:customer_id(name, whatsapp), services:service_id(name, price, duration_minutes)')
-      .order('start_time', { ascending: true })
-    
-    if (!error) return data || []
+    try {
+      const { data, error } = await supabase
+        .from(table)
+        .select('*, customers:customer_id(name, whatsapp), services:service_id(name, price, duration_minutes)')
+        .order('start_time', { ascending: true })
+      
+      if (!error && data) {
+        allAppointments = [...allAppointments, ...data]
+      }
+    } catch (e) {
+      console.warn(`Tabela ${table} não disponível para busca.`)
+    }
   }
-  return []
+
+  // Remover duplicatas por ID se existirem nas duas tabelas
+  const unique = Array.from(new Map(allAppointments.map(a => [a.id, a])).values())
+  return unique
 }
 
 export async function addAppointment(appointmentData: any) {
@@ -77,12 +88,14 @@ export async function addAppointment(appointmentData: any) {
 export async function updateAppointmentStatus(id: string, status: string) {
   const tables = ['agendamentos', 'appointments']
   for (const table of tables) {
-    // 1. Pegar dados do agendamento para a mensagem
+    // 1. Pegar dados do agendamento para a mensagem (MaybeSingle para Híbrido)
     const { data: apt } = await supabase
       .from(table)
       .select('*, customers:customer_id(*), services:service_id(*)')
       .eq('id', id)
-      .single()
+      .maybeSingle()
+    
+    if (!apt) continue // Tentar na próxima tabela
 
     const { error } = await supabase
       .from(table)
@@ -122,6 +135,7 @@ export async function updateAppointmentStatus(id: string, status: string) {
       revalidatePath('/')
       return { success: true }
     }
+    console.error(`Erro ao atualizar ${id} na tabela ${table}:`, error)
   }
   throw new Error('Falha ao atualizar status')
 }

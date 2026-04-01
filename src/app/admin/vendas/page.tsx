@@ -297,22 +297,22 @@ export default function SalesPage() {
           <div className="relative w-full h-[90vh] mt-[10vh] rounded-t-3xl lg:h-full lg:mt-0 lg:w-[500px] lg:rounded-none bg-[#121021] border-t lg:border-t-0 lg:border-l border-white/5 shadow-2xl flex flex-col slide-in-from-bottom lg:slide-in-from-right duration-300">
              
              {/* Header */}
-             <div className="flex items-center justify-between px-6 py-4 border-b border-white/5 text-white bg-[#0A0A0A]/50">
-                <div className="flex items-center gap-3">
-                   <button onClick={() => setIsModalOpen(false)} className="p-2 -ml-2 text-gray-400 hover:text-white rounded-full hover:bg-white/5 transition-colors">
-                      <X size={20} />
-                   </button>
-                   <h2 className="text-lg font-bold tracking-tight">{editingId ? 'Editar Venda' : 'Checkout'}</h2>
-                </div>
-                <button 
-                  onClick={handleCheckout}
-                  disabled={saving || !formData.customerId}
-                  className="px-5 py-2.5 bg-emerald-500 text-black text-sm font-bold rounded-xl shadow-lg shadow-emerald-500/20 hover:brightness-110 disabled:opacity-50 disabled:grayscale transition-all flex items-center gap-2"
-                >
-                   {saving ? <Loader2 size={16} className="animate-spin" /> : <Save size={16} />}
-                   {editingId ? 'Salvar' : 'Concluir Venda'}
-                </button>
-             </div>
+              <div className="flex items-center justify-between px-6 py-5 border-b border-white/5 text-white bg-[#0A0A0A]/80 sticky top-0 z-[60] backdrop-blur-md">
+                 <div className="flex items-center gap-3">
+                    <button onClick={() => setIsModalOpen(false)} className="p-3 -ml-2 text-gray-400 hover:text-white rounded-full bg-white/5 transition-all">
+                       <X size={24} />
+                    </button>
+                    <h2 className="text-xl font-black italic uppercase tracking-tighter">{editingId ? 'Editar Venda' : 'Finalizar Venda'}</h2>
+                 </div>
+                 <button 
+                   onClick={handleCheckout}
+                   disabled={saving || !formData.customerId}
+                   className="px-6 py-3 bg-emerald-500 text-black text-[10px] font-black uppercase tracking-widest rounded-xl shadow-xl shadow-emerald-500/10 hover:brightness-110 active:scale-95 disabled:opacity-50 disabled:grayscale transition-all flex items-center gap-2 relative z-[70]"
+                 >
+                    {saving ? <Loader2 size={16} className="animate-spin" /> : <Save size={18} />}
+                    {editingId ? 'SALVAR' : 'CONCLUIR'}
+                 </button>
+              </div>
 
              {/* Corpo do Checkout */}
              <div className="flex-1 overflow-y-auto p-6 space-y-6 no-scrollbar text-white flex flex-col bg-[#0A0A0A]">

@@ -213,50 +213,64 @@ export default function AgendaPage() {
                 {hours.map((_, hIdx) => <div key={hIdx} className="h-12 border-b border-white/5 opacity-30 cursor-crosshair" />)}
 
                 {appointments
-                  .filter(apt => isSameDay(parseISO(apt.start_time), day) && apt.status !== 'cancelado')
-                  .map((apt) => {
-                    const isFinalizado = apt.status === 'finalizado'
-                    const duration = apt.services?.duration_minutes || 60
-                    const style = getAppointmentStyle(apt.start_time, duration)
-                    const color = isFinalizado ? '#4B5563' : (apt.services?.color || '#5E41FF')
-                    
-                    return (
-                      <div 
-                        key={apt.id}
-                        style={{ 
-                          ...style, 
-                          backgroundColor: isFinalizado ? 'rgba(75, 85, 99, 0.1)' : `${color}15`, 
-                          borderColor: color, 
-                          color: color,
-                          opacity: isFinalizado ? 0.6 : 1
-                        }}
-                        className={`absolute left-1 right-1 p-3 rounded-2xl border-l-4 shadow-xl group border border-white/5 overflow-hidden flex flex-col justify-between transition-all hover:z-20 cursor-default ${isFinalizado ? 'grayscale' : ''}`}
-                      >
+                   .filter(apt => isSameDay(parseISO(apt.start_time), day) && apt.status !== 'cancelado')
+                   .sort((a,b) => parseISO(a.start_time).getTime() - parseISO(b.start_time).getTime())
+                   .map((apt, index, filtered) => {
+                     const isFinalizado = apt.status === 'finalizado'
+                     const duration = apt.services?.duration_minutes || 60
+                     const style = getAppointmentStyle(apt.start_time, duration)
+                     const color = isFinalizado ? '#4B5563' : (apt.services?.color || '#5E41FF')
+                     
+                     // Lógica de Coluna para Sobreposição
+                     const overlaps = filtered.filter(other => 
+                        other.id !== apt.id && 
+                        parseISO(other.start_time) < addMinutes(parseISO(apt.start_time), duration) &&
+                        addMinutes(parseISO(other.start_time), other.services?.duration_minutes || 60) > parseISO(apt.start_time)
+                     )
+                     
+                     const hasOverlap = overlaps.length > 0
+                     const width = hasOverlap ? '45%' : '95%'
+                     const left = hasOverlap ? (overlaps.some(o => parseISO(o.start_time) < parseISO(apt.start_time)) ? '50%' : '2%') : '2.5%'
+
+                     return (
+                       <div 
+                         key={apt.id}
+                         style={{ 
+                           ...style, 
+                           width,
+                           left,
+                           backgroundColor: isFinalizado ? 'rgba(75, 85, 99, 0.1)' : `${color}25`, 
+                           borderColor: color, 
+                           color: color,
+                           opacity: isFinalizado ? 0.6 : 1
+                         }}
+                         className={`absolute p-2 lg:p-3 rounded-2xl border-l-4 shadow-2xl group border border-white/10 overflow-hidden flex flex-col justify-between transition-all hover:z-50 cursor-default ${isFinalizado ? 'grayscale' : ''}`}
+                       >
                         <div className="flex flex-col gap-0.5">
                            <div className="flex items-center justify-between">
                               <span className="text-[9px] font-black uppercase tracking-widest truncate opacity-80 flex items-center gap-1">
                                  {isFinalizado && <CheckCircle2 size={10} className="text-emerald-500" />}
                                  {apt.services?.name}
                               </span>
-                              <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                                 {!isFinalizado && (
-                                   <>
-                                      <button 
-                                        onClick={(e) => { e.stopPropagation(); setSelectedApt(apt); setIsCheckoutOpen(true); }}
-                                        className="px-2 py-1 bg-white text-black text-[8px] font-black uppercase rounded-lg shadow-lg hover:scale-105 active:scale-95 transition-all"
-                                      >
-                                         Checkout
-                                      </button>
-                                      <button 
-                                        onClick={(e) => { e.stopPropagation(); handleCancelAppointment(apt.id); }}
-                                        className="p-1 bg-red-500/10 text-red-500 hover:bg-red-500 hover:text-white rounded-lg transition-all"
-                                        title="Cancelar Agendamento"
-                                      >
-                                         <X size={10} />
-                                      </button>
-                                   </>
-                                 )}
-                              </div>
+                               <div className="flex items-center gap-1.5 opacity-100 z-30 relative scale-90 origin-right">
+                                  {!isFinalizado && (
+                                    <>
+                                       <button 
+                                         onClick={(e) => { e.stopPropagation(); setSelectedApt(apt); setIsCheckoutOpen(true); }}
+                                         className="px-3 py-2 bg-white text-black text-[9px] font-black uppercase rounded-lg shadow-xl hover:brightness-110 active:scale-95 transition-all outline-none border border-black/10"
+                                       >
+                                          Checkout
+                                       </button>
+                                       <button 
+                                         onClick={(e) => { e.stopPropagation(); handleCancelAppointment(apt.id); }}
+                                         className="p-2 bg-red-600 text-white hover:bg-red-700 rounded-lg transition-all shadow-xl border border-white/20"
+                                         title="Cancelar Agendamento"
+                                       >
+                                          <X size={14} strokeWidth={4} />
+                                       </button>
+                                    </>
+                                  )}
+                               </div>
                            </div>
                            <h4 className="text-[13px] font-black text-white tracking-tight mt-1 truncate">{apt.customers?.name}</h4>
                         </div>
