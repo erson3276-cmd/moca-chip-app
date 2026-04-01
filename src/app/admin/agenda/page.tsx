@@ -43,7 +43,8 @@ import {
   addMinutes,
   isToday,
   startOfDay,
-  endOfDay
+  endOfDay,
+  toUTCString
 } from 'date-fns'
 import { ptBR } from 'date-fns/locale'
 
@@ -104,11 +105,12 @@ export default function AgendaPage() {
     fetchData()
   }, [currentDate])
 
-  // Lógica de Renderização de Cartões (Top e Height)
+  // Lógica de Renderização de Cartões (Top e Height) - usando UTC para consistência
   const getCardPosition = (startTimeStr: string, duration: number) => {
     const d = parseISO(startTimeStr)
+    // Usar getUTCHours() para garantir que estamos pegando a hora em UTC (same as Supabase)
     const hourStart = 0
-    const minutesFromStartOfDay = (d.getHours() - hourStart) * 60 + d.getMinutes()
+    const minutesFromStartOfDay = (d.getUTCHours() - hourStart) * 60 + d.getUTCMinutes()
     
     const top = (minutesFromStartOfDay / 30) * 64
     const height = (duration / 30) * 64
@@ -332,7 +334,7 @@ export default function AgendaPage() {
                                   <div className="space-y-1">
                                      <div className="flex items-center justify-between">
                                         <span className="text-[9px] font-black uppercase tracking-widest flex items-center gap-1 opacity-70">
-                                           <Clock size={10} /> {format(parseISO(apt.start_time), 'HH:mm')}
+                                           <Clock size={10} /> {format(parseISO(apt.start_time), 'HH:mm', { timeZone: 'UTC' })}
                                         </span>
                                         {isFinished && <CheckCircle2 size={14} className="text-emerald-500" />}
                                      </div>
