@@ -103,6 +103,7 @@ export default function AgendaPage() {
 
   useEffect(() => {
     fetchData()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [currentDate])
 
   // Fuso horário de Brasília (UTC-3)
