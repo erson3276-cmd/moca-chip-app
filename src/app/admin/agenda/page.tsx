@@ -43,8 +43,7 @@ import {
   addMinutes,
   isToday,
   startOfDay,
-  endOfDay,
-  toUTCString
+  endOfDay
 } from 'date-fns'
 import { ptBR } from 'date-fns/locale'
 
