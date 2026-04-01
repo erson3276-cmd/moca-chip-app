@@ -101,16 +101,19 @@ export default function ServicosPage() {
     fetchServices()
   }, [fetchServices])
 
-  const categories = ['Todos', ...CATEGORIES]
-
   const filteredServices = services.filter(s => {
     const matchesSearch = !search || 
       s.name?.toLowerCase().includes(search.toLowerCase()) ||
       s.description?.toLowerCase().includes(search.toLowerCase()) ||
       s.category?.toLowerCase().includes(search.toLowerCase())
-    const matchesCategory = !selectedCategory || selectedCategory === 'Todos' || selectedCategory === 'Todos' || s.category === selectedCategory
+    
+    const serviceCategory = (s.category || '').trim().toLowerCase()
+    const selectedCat = (selectedCategory || '').trim().toLowerCase()
+    
+    const matchesCategory = !selectedCat || selectedCat === 'todos' || serviceCategory === selectedCat
+    
     const matchesActive = showInactive ? true : s.active
-    return matchesSearch && matchesActive && (selectedCategory === 'Todos' || !selectedCategory || s.category === selectedCategory || !s.category)
+    return matchesSearch && matchesActive && matchesCategory
   })
 
   const activeServices = services.filter(s => s.active).length
@@ -309,12 +312,22 @@ export default function ServicosPage() {
       {/* Categorias */}
       <div className="max-w-7xl mx-auto mb-6">
         <div className="flex items-center gap-2 overflow-x-auto pb-2">
-          {categories.map(cat => (
+          <button
+            onClick={() => { setSelectedCategory(null); setCurrentPage(1); }}
+            className={`px-4 py-2 rounded-xl text-sm font-medium whitespace-nowrap transition-all ${
+              !selectedCategory
+                ? 'bg-[#5E41FF] text-white'
+                : 'bg-[#121021] text-gray-400 hover:text-white border border-white/10'
+            }`}
+          >
+            Todos
+          </button>
+          {CATEGORIES.map(cat => (
             <button
               key={cat}
-              onClick={() => { setSelectedCategory(cat === 'Todos' ? null : cat); setCurrentPage(1); }}
+              onClick={() => { setSelectedCategory(cat); setCurrentPage(1); }}
               className={`px-4 py-2 rounded-xl text-sm font-medium whitespace-nowrap transition-all ${
-                (cat === 'Todos' && !selectedCategory) || selectedCategory === cat
+                selectedCategory === cat
                   ? 'bg-[#5E41FF] text-white'
                   : 'bg-[#121021] text-gray-400 hover:text-white border border-white/10'
               }`}
