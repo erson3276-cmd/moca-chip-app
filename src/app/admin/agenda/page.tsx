@@ -107,49 +107,59 @@ export default function AgendaPage() {
   // Lógica de Renderização de Cartões (Top e Height)
   const getCardPosition = (startTimeStr: string, duration: number) => {
     const d = parseISO(startTimeStr)
-    const hourStart = 8 // Começamos às 08:00
+    const hourStart = 8
     const minutesFromStartOfDay = (d.getHours() - hourStart) * 60 + d.getMinutes()
     
-    const top = (minutesFromStartOfDay / 30) * 64 // 64px por bloco de 30min
+    const top = (minutesFromStartOfDay / 30) * 64
     const height = (duration / 30) * 64
-    return { top: `${top}px`, height: `${height - 2}px` } // -2px para o gap visual
+    return { top: `${top}px`, height: `${Math.max(height - 2, 20)}px` }
   }
 
-  // Lógica de Detecção de Sobreposição para Grade Lado-a-Lado
+  // Nova lógica de detecção de sobreposição - agrupa agendamentos que conflitam
   const getDailyAppointments = (day: Date) => {
     const dayApts = appointments.filter(apt => isSameDay(parseISO(apt.start_time), day))
     
     // Ordenar por horário de início
     dayApts.sort((a, b) => parseISO(a.start_time).getTime() - parseISO(b.start_time).getTime())
     
+    // Calcular end_time para cada agendamento baseado na duração do serviço
+    const aptsWithEnd = dayApts.map(apt => {
+      const duration = apt.services?.duration_minutes || 60
+      const startMs = parseISO(apt.start_time).getTime()
+      const endMs = apt.end_time ? parseISO(apt.end_time).getTime() : startMs + (duration * 60 * 1000)
+      return { ...apt, aptStart: startMs, aptEnd: endMs, duration }
+    })
+
+    // Agrupar agendamentos em "tracks" (faixas) para evitar sobreposição
+    const tracks: any[] = []
     const results: any[] = []
-    const columns: any[][] = []
 
-    dayApts.forEach(apt => {
-      let placed = false
-      const aptStart = parseISO(apt.start_time).getTime()
-      const aptEnd = parseISO(apt.end_time || addMinutes(parseISO(apt.start_time), 60).toISOString()).getTime()
-
-      for (let i = 0; i < columns.length; i++) {
-        const lastAptInCol = columns[i][columns[i].length - 1]
-        const colEnd = parseISO(lastAptInCol.end_time || addMinutes(parseISO(lastAptInCol.start_time), 60).toISOString()).getTime()
-        
-        if (aptStart >= colEnd) {
-          columns[i].push(apt)
-          results.push({ ...apt, colIndex: i })
-          placed = true
+    aptsWithEnd.forEach(apt => {
+      // Encontrar uma track onde este agendamento cabe (não conflita)
+      let placedInTrack = -1
+      
+      for (let i = 0; i < tracks.length; i++) {
+        const trackEnd = tracks[i]
+        // Se o início deste apt é >= ao fim da última track, cabe nela
+        if (apt.aptStart >= trackEnd) {
+          placedInTrack = i
           break
         }
       }
 
-      if (!placed) {
-        columns.push([apt])
-        results.push({ ...apt, colIndex: columns.length - 1 })
+      if (placedInTrack === -1) {
+        // Criar nova track
+        tracks.push(apt.aptEnd)
+        placedInTrack = tracks.length - 1
+      } else {
+        // Atualizar fim da track existente
+        tracks[placedInTrack] = Math.max(tracks[placedInTrack], apt.aptEnd)
       }
+
+      results.push({ ...apt, trackIndex: placedInTrack, totalTracks: tracks.length })
     })
 
-    // Adicionar total de colunas para cálculo de largura
-    return results.map(apt => ({ ...apt, totalCols: columns.length }))
+    return results
   }
 
   const handleCancelApt = async (id: string) => {
@@ -175,7 +185,7 @@ export default function AgendaPage() {
       await completeAppointmentCheckout(selectedApt.id, {
         customer_id: selectedApt.customer_id,
         service_id: selectedApt.service_id,
-        amount: selectedApt.servicos?.price || 0,
+        amount: selectedApt.services?.price || 0,
         payment_method: checkoutData.paymentMethod,
         date: new Date().toISOString()
       })
@@ -255,13 +265,13 @@ export default function AgendaPage() {
       {/* Main Agenda Grid */}
       <div className="bg-[#121021] border border-white/5 rounded-[3.5rem] shadow-2xl overflow-hidden relative">
          
-         {/* Days Header */}
-         <div className="grid grid-cols-[100px_1fr] border-b border-white/5 bg-black/20">
-            <div className="h-20 border-r border-white/5 flex items-center justify-center">
-               <Clock size={20} className="text-gray-600" />
-            </div>
-            <div className="grid grid-cols-1 md:grid-cols-7">
-               {(view === 'semana' ? days : [currentDate]).map(day => (
+          {/* Days Header */}
+          <div className="grid grid-cols-[100px_1fr] border-b border-white/5 bg-black/20">
+             <div className="h-20 border-r border-white/5 flex items-center justify-center">
+                <Clock size={20} className="text-gray-600" />
+             </div>
+             <div className={`grid ${view === 'dia' ? 'grid-cols-1' : 'grid-cols-1 md:grid-cols-7'}`}>
+                {(view === 'semana' ? days : [currentDate]).map(day => (
                  <div key={day.toString()} className={`py-6 flex flex-col items-center justify-center border-r border-white/5 relative ${isToday(day) ? 'bg-[#5E41FF]/5' : ''}`}>
                     <span className="text-[10px] font-black uppercase tracking-[0.2em] text-gray-500 mb-1">{format(day, 'EEE', { locale: ptBR })}</span>
                     <span className={`text-2xl font-black italic tracking-tighter ${isToday(day) ? 'text-[#5E41FF]' : 'text-white'}`}>{format(day, 'dd')}</span>
@@ -286,7 +296,7 @@ export default function AgendaPage() {
                </div>
 
                {/* Appointments Cells */}
-               <div className="grid grid-cols-1 md:grid-cols-7 relative">
+               <div className={`grid ${view === 'dia' ? 'grid-cols-1' : 'grid-cols-1 md:grid-cols-7'} relative`}>
                   
                   {/* Grid Lines Overlay */}
                   <div className="absolute inset-0 pointer-events-none">
@@ -295,16 +305,16 @@ export default function AgendaPage() {
                      ))}
                   </div>
 
-                  {(view === 'semana' ? days : [currentDate]).map((day, dIdx) => (
-                    <div key={`col-${dIdx}`} className="relative group/col border-r border-white/[0.03]">
-                       {getDailyAppointments(day).map(apt => {
-                          const style = getCardPosition(apt.start_time, apt.servicos?.duration_minutes || 60)
-                          const isCancelled = apt.status === 'cancelado'
-                          const isFinished = apt.status === 'finalizado'
-                          
-                          // Ajustar largura based no colIndex
-                          const width = apt.totalCols > 1 ? (100 / apt.totalCols) : 100
-                          const left = apt.colIndex * width
+                   {(view === 'semana' ? days : [currentDate]).map((day, dIdx) => (
+                     <div key={`col-${dIdx}`} className="relative group/col border-r border-white/[0.03]">
+                        {getDailyAppointments(day).map(apt => {
+                           const style = getCardPosition(apt.start_time, apt.duration || 60)
+                           const isCancelled = apt.status === 'cancelado'
+                           const isFinished = apt.status === 'finalizado'
+                           
+                           // Calcular largura e posição baseados nas tracks
+                           const width = apt.totalTracks > 1 ? (100 / apt.totalTracks) : 100
+                           const left = apt.trackIndex * width
 
                           return (
                             <div 
@@ -326,12 +336,12 @@ export default function AgendaPage() {
                                         </span>
                                         {isFinished && <CheckCircle2 size={14} className="text-emerald-500" />}
                                      </div>
-                                     <h4 className="text-[13px] font-black italic uppercase leading-none tracking-tight truncate">{apt.servicos?.name || 'Serviço'}</h4>
+                                     <h4 className="text-[13px] font-black italic uppercase leading-none tracking-tight truncate">{apt.services?.name || 'Serviço'}</h4>
                                      <div className="flex items-center gap-1.5 mt-1">
                                         <div className="w-5 h-5 rounded-full bg-white/10 flex items-center justify-center border border-white/5 scale-90">
                                            <User size={10} />
                                         </div>
-                                        <span className="text-[10px] font-bold truncate opacity-80">{apt.clientes?.name || 'Cliente'}</span>
+                                        <span className="text-[10px] font-bold truncate opacity-80">{apt.customers?.name || 'Cliente'}</span>
                                      </div>
                                   </div>
 
@@ -487,7 +497,7 @@ export default function AgendaPage() {
                     <p className="text-[10px] font-black uppercase tracking-widest text-gray-600 mb-2">Total a Receber</p>
                     <div className="flex items-center justify-between">
                        <span className="text-4xl font-black italic tracking-tighter text-emerald-400">
-                          {selectedApt?.servicos?.price.toLocaleString('pt-BR', { minimumFractionDigits: 2, style: 'currency', currency: 'BRL' })}
+                          {selectedApt?.services?.price?.toLocaleString('pt-BR', { minimumFractionDigits: 2, style: 'currency', currency: 'BRL' })}
                        </span>
                        <div className="w-14 h-14 rounded-2xl bg-emerald-500/10 flex items-center justify-center text-emerald-500 border border-emerald-500/20">
                           <DollarSign size={28} />
