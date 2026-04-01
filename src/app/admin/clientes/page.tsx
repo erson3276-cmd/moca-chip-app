@@ -18,9 +18,7 @@ import {
   Loader2,
   User,
   ShieldCheck,
-  ShieldAlert,
-  Eye,
-  EyeOff
+  ShieldAlert
 } from 'lucide-react'
 import { format, parseISO } from 'date-fns'
 import { ptBR } from 'date-fns/locale'
@@ -55,7 +53,7 @@ export default function ClientesPage() {
   
   const [isModalOpen, setIsModalOpen] = useState(false)
   const [editingCustomer, setEditingCustomer] = useState<Customer | null>(null)
-  const [showInactive, setShowInactive] = useState(false)
+  const [showBlocked, setShowBlocked] = useState(true)
   
   const [formData, setFormData] = useState<FormData>({
     name: '',
@@ -97,13 +95,14 @@ export default function ClientesPage() {
       c.name?.toLowerCase().includes(search.toLowerCase()) ||
       c.whatsapp?.includes(search) ||
       c.email?.toLowerCase().includes(search.toLowerCase())
-    const matchesActive = showInactive ? true : c.active
-    return matchesSearch && matchesActive
+    const matchesBlocked = showBlocked ? true : c.active
+    return matchesSearch && matchesBlocked
   })
 
-  const totalCustomers = filteredCustomers.length
-  const activeCustomers = filteredCustomers.filter(c => c.active).length
-  const totalPages = Math.ceil(totalCustomers / itemsPerPage)
+  const totalCustomers = customers.length
+  const activeCustomers = customers.filter(c => c.active).length
+  const blockedCustomers = customers.filter(c => !c.active).length
+  const totalPages = Math.ceil(filteredCustomers.length / itemsPerPage)
   const paginatedCustomers = filteredCustomers.slice(
     (currentPage - 1) * itemsPerPage,
     currentPage * itemsPerPage
@@ -243,21 +242,21 @@ export default function ClientesPage() {
             </div>
             <div>
               <h1 className="text-3xl font-bold">Clientes</h1>
-              <p className="text-gray-500 text-sm">{activeCustomers} clientes ativos</p>
+              <p className="text-gray-500 text-sm">{totalCustomers} clientes ({activeCustomers} ativos, {blockedCustomers} bloqueados)</p>
             </div>
           </div>
           
           <div className="flex items-center gap-3">
             <button
-              onClick={() => setShowInactive(!showInactive)}
+              onClick={() => setShowBlocked(!showBlocked)}
               className={`p-3 rounded-xl transition-all ${
-                showInactive 
-                  ? 'bg-orange-500/20 text-orange-400' 
+                showBlocked 
+                  ? 'bg-emerald-500/20 text-emerald-400' 
                   : 'bg-[#1a1a2e] text-gray-400 hover:text-white'
               }`}
-              title={showInactive ? 'Ocultar inativos' : 'Mostrar inativos'}
+              title={showBlocked ? 'Ocultar bloqueados' : 'Mostrar bloqueados'}
             >
-              {showInactive ? <Eye size={20} /> : <EyeOff size={20} />}
+              {showBlocked ? <ShieldAlert size={20} /> : <ShieldCheck size={20} />}
             </button>
             
             <button
@@ -298,10 +297,10 @@ export default function ClientesPage() {
         
         <div className="bg-[#121021] rounded-2xl p-6 border border-white/10">
           <div className="flex items-center gap-3 mb-2">
-            <Users size={20} className="text-red-400" />
-            <span className="text-gray-400 text-sm">Clientes Inativos</span>
+            <ShieldAlert size={20} className="text-red-400" />
+            <span className="text-gray-400 text-sm">Bloqueados</span>
           </div>
-          <p className="text-3xl font-bold text-red-400">{totalCustomers - activeCustomers}</p>
+          <p className="text-3xl font-bold text-red-400">{blockedCustomers}</p>
         </div>
       </div>
 
@@ -347,14 +346,17 @@ export default function ClientesPage() {
               </thead>
               <tbody>
                 {paginatedCustomers.map((customer, index) => (
-                  <tr key={customer.id} className={`border-b border-white/5 ${index % 2 === 0 ? '' : 'bg-white/[0.02]'}`}>
+                  <tr 
+                    key={customer.id} 
+                    className={`border-b border-white/5 ${customer.active ? '' : 'bg-red-500/5'} ${index % 2 === 0 ? '' : 'bg-white/[0.02]'}`}
+                  >
                     <td className="p-4">
                       <div className="flex items-center gap-3">
                         <div className="w-10 h-10 rounded-xl bg-[#5E41FF]/20 flex items-center justify-center">
                           <User size={18} className="text-[#5E41FF]" />
                         </div>
                         <div>
-                          <p className="font-bold">{customer.name}</p>
+                          <p className={`font-bold ${!customer.active ? 'text-red-400/70 line-through' : ''}`}>{customer.name}</p>
                           {customer.notes && (
                             <p className="text-xs text-gray-500 truncate max-w-[200px]">{customer.notes}</p>
                           )}
