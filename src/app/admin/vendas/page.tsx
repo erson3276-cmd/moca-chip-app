@@ -1,415 +1,565 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useCallback } from 'react'
 import { 
-  Calculator, 
-  Plus, 
-  Search, 
-  Filter, 
-  DollarSign, 
-  Calendar,
-  MoreVertical,
-  CheckCircle2,
-  Clock,
-  TrendingUp,
-  Receipt,
-  X,
-  User,
-  Save,
-  Loader2,
-  CreditCard,
-  Banknote,
-  QrCode,
+  DollarSign,
+  Plus,
+  Search,
   Trash2,
-  Edit2
+  Edit2,
+  X,
+  CreditCard,
+  Smartphone,
+  Banknote,
+  Calendar,
+  User,
+  Scissors,
+  ChevronLeft,
+  ChevronRight,
+  Check,
+  Loader2,
+  ShoppingCart
 } from 'lucide-react'
-import { addSale, getSales, getCustomers, updateSale, deleteSale } from '@/app/actions/admin'
+import { 
+  format, 
+  parseISO, 
+  startOfMonth, 
+  endOfMonth, 
+  eachMonthOfInterval,
+  subMonths,
+  addMonths,
+  isSameMonth,
+  isToday,
+  startOfDay,
+  setHours,
+  setMinutes
+} from 'date-fns'
+import { ptBR } from 'date-fns/locale'
+import { formatInTimeZone } from 'date-fns-tz'
 
-export default function SalesPage() {
-  const [sales, setSales] = useState<any[]>([])
+const TIMEZONE = 'America/Sao_Paulo'
+
+interface Sale {
+  id: string
+  customer_id: string
+  service_id: string
+  amount: number
+  payment_method: string
+  date: string
+  created_at: string
+  customers?: { id: string; name: string }
+  services?: { id: string; name: string }
+}
+
+interface Customer {
+  id: string
+  name: string
+}
+
+interface Service {
+  id: string
+  name: string
+  price: number
+}
+
+interface FormData {
+  customer_id: string
+  service_id: string
+  amount: string
+  payment_method: string
+  date: string
+  time: string
+}
+
+export default function VendasPage() {
+  const [sales, setSales] = useState<Sale[]>([])
+  const [customers, setCustomers] = useState<Customer[]>([])
+  const [services, setServices] = useState<Service[]>([])
   const [loading, setLoading] = useState(true)
-  const [search, setSearch] = useState('')
-  const [statusFilter, setStatusFilter] = useState('Todos')
-
-  // Modal State
-  const [isModalOpen, setIsModalOpen] = useState(false)
   const [saving, setSaving] = useState(false)
-  const [customers, setCustomers] = useState<any[]>([])
-  const [editingId, setEditingId] = useState<string | null>(null)
-
-  // Form State
-  const [formData, setFormData] = useState({
-    customerId: '',
-    amount: 0,
-    paymentMethod: 'Pix',
-    status: 'pago'
+  
+  const [currentMonth, setCurrentMonth] = useState(new Date())
+  const [search, setSearch] = useState('')
+  
+  const [isModalOpen, setIsModalOpen] = useState(false)
+  const [editingSale, setEditingSale] = useState<Sale | null>(null)
+  
+  const [formData, setFormData] = useState<FormData>({
+    customer_id: '',
+    service_id: '',
+    amount: '',
+    payment_method: 'Pix',
+    date: format(new Date(), 'yyyy-MM-dd'),
+    time: format(new Date(), 'HH:mm')
   })
+  
+  const [message, setMessage] = useState<{type: 'success' | 'error', text: string} | null>(null)
 
-  async function fetchData() {
-    setLoading(true)
-    try { 
-      const vendas = await getSales()
-      setSales(vendas) 
-    } catch(e) { console.error("Sales fetch erro:", e) }
-    
-    try { 
-      const clientes = await getCustomers()
-      setCustomers(clientes) 
-    } catch(e) { console.error("Customers fetch erro:", e) }
-    
-    setLoading(false)
+  const showMessage = (type: 'success' | 'error', text: string) => {
+    setMessage({ type, text })
+    setTimeout(() => setMessage(null), 3000)
   }
+
+  const fetchData = useCallback(async () => {
+    setLoading(true)
+    try {
+      const [salesRes, custsRes, servsRes] = await Promise.all([
+        fetch('/api/vendas'),
+        fetch('/api/customers'),
+        fetch('/api/services')
+      ])
+      
+      const salesData = await salesRes.json()
+      const custsData = await custsRes.json()
+      const servsData = await servsRes.json()
+      
+      setSales(salesData.data || [])
+      setCustomers(custsData.data || [])
+      setServices(servsData.data || [])
+    } catch (error) {
+      console.error('Erro ao carregar dados:', error)
+      showMessage('error', 'Erro ao carregar dados')
+    }
+    setLoading(false)
+  }, [])
 
   useEffect(() => {
     fetchData()
-  }, [])
+  }, [fetchData])
 
-  const filteredSales = sales.filter(s => {
-    const customerName = s.customers?.name || 'Cliente Avulso'
-    const matchesSearch = customerName.toLowerCase().includes(search.toLowerCase())
-    const matchesStatus = statusFilter === 'Todos' || s.status === statusFilter.toLowerCase()
-    return matchesSearch && matchesStatus
+  const filteredSales = sales.filter(sale => {
+    const saleDate = sale.date || sale.created_at
+    const saleMonth = formatInTimeZone(parseISO(saleDate), TIMEZONE, 'yyyy-MM-dd')
+    const monthStr = format(currentMonth, 'yyyy-MM-dd')
+    const matchesMonth = formatInTimeZone(currentMonth, TIMEZONE, 'yyyy-MM') === formatInTimeZone(parseISO(saleDate), TIMEZONE, 'yyyy-MM')
+    const matchesSearch = !search || 
+      sale.customers?.name?.toLowerCase().includes(search.toLowerCase()) ||
+      sale.services?.name?.toLowerCase().includes(search.toLowerCase()) ||
+      sale.payment_method?.toLowerCase().includes(search.toLowerCase())
+    return matchesMonth && matchesSearch
   })
 
-  const totalRevenue = filteredSales.reduce((acc, curr) => acc + Number(curr.amount), 0)
+  const totalReceita = filteredSales.reduce((sum, s) => sum + (Number(s.amount) || 0), 0)
+  const totalVendas = filteredSales.length
 
-  const handleCheckout = async (e: React.FormEvent) => {
+  const getPaymentIcon = (method: string) => {
+    switch (method) {
+      case 'Pix': return <Smartphone size={16} />
+      case 'Crédito': return <CreditCard size={16} />
+      case 'Débito': return <Banknote size={16} />
+      case 'Dinheiro': return <Banknote size={16} />
+      default: return <DollarSign size={16} />
+    }
+  }
+
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     setSaving(true)
 
     try {
-      const payload = {
-        customer_id: formData.customerId,
-        amount: formData.amount,
-        payment_method: formData.paymentMethod,
-        status: formData.status
-      }
-
-      if (editingId) {
-        await updateSale(editingId, payload)
+      const dateTime = new Date(`${formData.date}T${formData.time}:00`)
+      
+      if (editingSale) {
+        const response = await fetch('/api/vendas', {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            id: editingSale.id,
+            customer_id: formData.customer_id,
+            service_id: formData.service_id,
+            amount: Number(formData.amount),
+            payment_method: formData.payment_method,
+            date: dateTime.toISOString()
+          })
+        })
+        if (!response.ok) throw new Error('Erro ao atualizar')
+        showMessage('success', 'Venda atualizada!')
       } else {
-        await addSale(payload)
+        const response = await fetch('/api/vendas', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            customer_id: formData.customer_id,
+            service_id: formData.service_id,
+            amount: Number(formData.amount),
+            payment_method: formData.payment_method,
+            date: dateTime.toISOString()
+          })
+        })
+        if (!response.ok) throw new Error('Erro ao salvar')
+        showMessage('success', 'Venda registrada!')
       }
-
-      await fetchData()
+      
       setIsModalOpen(false)
-      setEditingId(null)
-      setFormData({ customerId: '', amount: 0, paymentMethod: 'Pix', status: 'pago' })
-    } catch(error: any) {
-      alert('Erro ao processar venda: ' + error.message)
+      setEditingSale(null)
+      setFormData({
+        customer_id: '',
+        service_id: '',
+        amount: '',
+        payment_method: 'Pix',
+        date: format(new Date(), 'yyyy-MM-dd'),
+        time: format(new Date(), 'HH:mm')
+      })
+      fetchData()
+    } catch (error: any) {
+      showMessage('error', error.message)
     }
 
     setSaving(false)
   }
 
-  const handleDelete = async (id: string) => {
-    if (!confirm('Tem certeza que deseja excluir esta venda? Esta ação não pode ser desfeita.')) return
-    try {
-      const { deleteSale } = await import('@/app/actions/admin')
-      await deleteSale(id)
-      await fetchData()
-      // Força a atualização do servidor para refletir nos relatórios
-      window.location.reload()
-    } catch (e: any) {
-      alert('Erro ao excluir: ' + e.message)
-    }
-  }
-
-  const openEdit = (sale: any) => {
-    setEditingId(sale.id)
+  const handleEdit = (sale: Sale) => {
+    setEditingSale(sale)
+    const saleDate = sale.date || sale.created_at
+    const date = parseISO(saleDate)
     setFormData({
-      customerId: sale.customer_id,
-      amount: sale.amount,
-      paymentMethod: sale.payment_method || 'Pix',
-      status: sale.status || 'pago'
+      customer_id: sale.customer_id || '',
+      service_id: sale.service_id || '',
+      amount: String(sale.amount || ''),
+      payment_method: sale.payment_method || 'Pix',
+      date: format(date, 'yyyy-MM-dd'),
+      time: format(date, 'HH:mm')
     })
     setIsModalOpen(true)
   }
 
+  const handleDelete = async (id: string) => {
+    if (!confirm('Excluir esta venda?')) return
+
+    try {
+      const response = await fetch(`/api/vendas?id=${id}`, {
+        method: 'DELETE'
+      })
+
+      if (!response.ok) throw new Error('Erro ao excluir')
+
+      showMessage('success', 'Venda excluída!')
+      fetchData()
+    } catch (error) {
+      showMessage('error', 'Erro ao excluir venda')
+    }
+  }
+
+  const handleServiceChange = (serviceId: string) => {
+    const service = services.find(s => s.id === serviceId)
+    setFormData({
+      ...formData,
+      service_id: serviceId,
+      amount: service ? String(service.price) : formData.amount
+    })
+  }
+
   return (
-    <div className="space-y-6 animate-in fade-in duration-500 relative">
-      <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
-        <div>
-          <h1 className="text-2xl font-bold tracking-tight">Vendas</h1>
-          <p className="text-sm text-gray-500 mt-1">Histórico financeiro e faturamento do salão.</p>
-        </div>
-        <div className="flex items-center gap-3">
-          <button 
-            onClick={() => {
-              setEditingId(null)
-              setFormData({ customerId: '', amount: 0, paymentMethod: 'Pix', status: 'pago' })
-              setIsModalOpen(true)
-            }}
-            className="flex items-center gap-2 px-4 py-2.5 bg-[#5E41FF] text-white rounded-xl text-sm font-bold shadow-lg shadow-[#5E41FF]/20 hover:brightness-110 active:scale-95 transition-all"
-          >
-            <Plus size={18} /> Adicionar venda
-          </button>
-        </div>
-      </div>
-
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-         <div className="p-6 rounded-3xl bg-[#121021]/50 border border-white/5 flex items-center justify-between group hover:bg-[#121021]/80 transition-all">
+    <div className="min-h-screen bg-[#0A0A0A] text-white p-6">
+      
+      {/* Header */}
+      <div className="max-w-7xl mx-auto mb-8">
+        <div className="flex items-center justify-between flex-wrap gap-4">
+          <div className="flex items-center gap-4">
+            <div className="w-14 h-14 rounded-2xl bg-emerald-500 flex items-center justify-center">
+              <ShoppingCart size={28} className="text-white" />
+            </div>
             <div>
-               <p className="text-[10px] uppercase font-bold text-gray-500 tracking-widest mb-1">Faturamento Total</p>
-               <p className="text-2xl font-bold tracking-tight text-white">R$ {totalRevenue.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</p>
+              <h1 className="text-3xl font-bold">Vendas</h1>
+              <p className="text-gray-500 text-sm">{format(currentMonth, 'MMMM yyyy', { locale: ptBR })}</p>
             </div>
-            <div className="w-12 h-12 rounded-2xl bg-emerald-500/10 flex items-center justify-center border border-emerald-500/20 group-hover:scale-110 transition-transform">
-               <TrendingUp className="text-emerald-500" size={24} />
-            </div>
-         </div>
-         <div className="p-6 rounded-3xl bg-[#121021]/50 border border-white/5 flex items-center justify-between group hover:bg-[#121021]/80 transition-all">
-            <div>
-               <p className="text-[10px] uppercase font-bold text-gray-500 tracking-widest mb-1">Vendas Hoje</p>
-               <p className="text-2xl font-bold tracking-tight text-white">{filteredSales.length}</p>
-            </div>
-            <div className="w-12 h-12 rounded-2xl bg-[#5E41FF]/10 flex items-center justify-center border border-[#5E41FF]/20 group-hover:scale-110 transition-transform">
-               <Receipt className="text-[#5E41FF]" size={24} />
-            </div>
-         </div>
-         <div className="p-6 rounded-3xl bg-[#121021]/50 border border-white/5 flex items-center justify-between group hover:bg-[#121021]/80 transition-all">
-            <div>
-               <p className="text-[10px] uppercase font-bold text-gray-500 tracking-widest mb-1">Ticket Médio</p>
-               <p className="text-2xl font-bold tracking-tight text-white">R$ {(filteredSales.length ? totalRevenue / filteredSales.length : 0).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</p>
-            </div>
-            <div className="w-12 h-12 rounded-2xl bg-amber-500/10 flex items-center justify-center border border-amber-500/20 group-hover:scale-110 transition-transform">
-               <DollarSign className="text-amber-500" size={24} />
-            </div>
-         </div>
-      </div>
-
-      <div className="flex items-center gap-8 border-b border-white/5 px-2">
-         {['Todos', 'Pago', 'Pendente'].map(tab => (
-           <button 
-             key={tab}
-             onClick={() => setStatusFilter(tab)}
-             className={`pb-4 text-sm font-bold transition-all ${statusFilter === tab ? 'text-[#5E41FF] border-b-2 border-[#5E41FF]' : 'text-gray-500 hover:text-gray-300'}`}
-           >
-             {tab}
-           </button>
-         ))}
-      </div>
-
-      <div className="flex flex-col gap-4 lg:flex-row lg:items-center justify-between">
-         <div className="flex items-center gap-3">
-            <div className="relative flex-1 lg:w-64">
-               <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500" size={16} />
-               <input 
-                 type="text" 
-                 placeholder="Cliente..." 
-                 value={search}
-                 onChange={(e) => setSearch(e.target.value)}
-                 className="w-full pl-10 pr-4 py-2 bg-[#141414] border border-white/5 rounded-xl text-sm focus:border-[#5E41FF]/50 outline-none transition-all text-white placeholder-gray-500"
-               />
-            </div>
-            <button className="p-2.5 bg-white/5 text-gray-400 border border-white/10 rounded-xl hover:bg-white/10 transition-all">
-               <Filter size={18} />
-            </button>
-         </div>
-      </div>
-
-      <div className="bg-[#121021]/30 border border-white/5 rounded-[2.5rem] overflow-hidden shadow-2xl">
-         <div className="overflow-x-auto no-scrollbar">
-            <table className="w-full text-left border-collapse">
-               <thead>
-                  <tr className="bg-white/5 text-[10px] uppercase tracking-widest font-bold text-gray-500">
-                     <th className="px-8 py-5">Data e Hora</th>
-                     <th className="px-8 py-5">Cliente</th>
-                     <th className="px-8 py-5 text-right">Valor Líquido</th>
-                     <th className="px-8 py-5">Pagamento</th>
-                     <th className="px-8 py-5 text-center">Status</th>
-                     <th className="px-8 py-5 text-center w-10">Ações</th>
-                  </tr>
-               </thead>
-               <tbody className="divide-y divide-white/5">
-                  {loading ? (
-                    <tr>
-                      <td colSpan={6} className="px-8 py-20 text-center text-gray-500 italic">Carregando faturamento...</td>
-                    </tr>
-                  ) : filteredSales.length === 0 ? (
-                    <tr>
-                      <td colSpan={6} className="px-8 py-20 text-center text-gray-500">Nenhuma venda encontrada.</td>
-                    </tr>
-                  ) : filteredSales.map((sale) => (
-                    <tr key={sale.id} className="group hover:bg-white/5 transition-colors cursor-pointer">
-                       <td className="px-8 py-5 flex items-center gap-3 text-white">
-                          <div className="w-10 h-10 rounded-full bg-white/5 flex items-center justify-center text-gray-500 group-hover:text-[#5E41FF] transition-colors">
-                             <Calendar size={16} />
-                          </div>
-                          <div className="flex flex-col">
-                             <span className="text-sm font-bold text-white/90">{new Date(sale.created_at).toLocaleDateString('pt-BR')}</span>
-                             <span className="text-[10px] text-gray-500 font-bold">{new Date(sale.created_at).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}</span>
-                          </div>
-                       </td>
-                       <td className="px-8 py-5 text-white">
-                          <div className="flex items-center gap-2">
-                             <div className="w-1.5 h-1.5 rounded-full bg-[#5E41FF]" />
-                             <span className="text-sm font-semibold">{sale.customers?.name || 'Cliente Avulso'}</span>
-                          </div>
-                       </td>
-                       <td className="px-8 py-5 text-right text-lg font-bold text-[#5E41FF] tracking-tight">
-                          {Number(sale.amount).toLocaleString('pt-BR', { minimumFractionDigits: 2, style: 'currency', currency: 'BRL' })}
-                       </td>
-                       <td className="px-8 py-5">
-                          <span className="text-xs text-gray-500 font-bold uppercase tracking-widest">{sale.payment_method || 'Cartão'}</span>
-                       </td>
-                       <td className="px-8 py-5 text-center">
-                          {sale.status === 'pago' ? (
-                            <span className="inline-flex items-center gap-1 text-emerald-500 text-[10px] font-bold uppercase tracking-[0.2em] bg-emerald-500/5 px-3 py-1.5 rounded-full ring-1 ring-emerald-500/20"><CheckCircle2 size={12} /> Pago</span>
-                          ) : (
-                            <span className="inline-flex items-center gap-1 text-amber-500 text-[10px] font-bold uppercase tracking-[0.2em] bg-amber-500/5 px-3 py-1.5 rounded-full ring-1 ring-amber-500/20"><Clock size={12} /> Pendente</span>
-                          )}
-                       </td>
-                       <td className="px-8 py-5 text-center">
-                          <div className="flex items-center justify-center gap-2">
-                             <button 
-                                type="button"
-                                onClick={(e) => { e.preventDefault(); e.stopPropagation(); openEdit(sale); }}
-                                className="p-3 text-gray-500 hover:text-[#5E41FF] hover:bg-[#5E41FF]/10 rounded-xl transition-all border border-transparent hover:border-[#5E41FF]/20"
-                                title="Editar Venda"
-                             >
-                                <Edit2 size={18} />
-                             </button>
-                             <button 
-                                type="button"
-                                onClick={(e) => { e.preventDefault(); e.stopPropagation(); handleDelete(sale.id); }}
-                                className="p-3 text-gray-400 hover:text-red-500 hover:bg-red-500/10 rounded-xl transition-all border border-transparent hover:border-red-500/20"
-                                title="Excluir Venda"
-                             >
-                                <Trash2 size={18} />
-                             </button>
-                          </div>
-                       </td>
-                    </tr>
-                  ))}
-               </tbody>
-            </table>
-         </div>
-      </div>
-
-      {/* MÓDULO: MODAL CHECKOUT / NOVA VENDA */}
-      {isModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center lg:justify-end animate-in fade-in duration-300">
-          <div 
-            className="absolute inset-0 bg-black/70 backdrop-blur-sm"
-            onClick={() => setIsModalOpen(false)}
-          />
-          
-          <div className="relative w-full h-[90vh] mt-[10vh] rounded-t-3xl lg:h-full lg:mt-0 lg:w-[500px] lg:rounded-none bg-[#121021] border-t lg:border-t-0 lg:border-l border-white/5 shadow-2xl flex flex-col slide-in-from-bottom lg:slide-in-from-right duration-300">
-             
-             {/* Header */}
-              <div className="flex items-center justify-between px-6 py-5 border-b border-white/5 text-white bg-[#0A0A0A]/80 sticky top-0 z-[60] backdrop-blur-md">
-                 <div className="flex items-center gap-3">
-                    <button onClick={() => setIsModalOpen(false)} className="p-3 -ml-2 text-gray-400 hover:text-white rounded-full bg-white/5 transition-all">
-                       <X size={24} />
-                    </button>
-                    <h2 className="text-xl font-black italic uppercase tracking-tighter">{editingId ? 'Editar Venda' : 'Finalizar Venda'}</h2>
-                 </div>
-                 <button 
-                   onClick={handleCheckout}
-                   disabled={saving || !formData.customerId}
-                   className="px-6 py-3 bg-emerald-500 text-black text-[10px] font-black uppercase tracking-widest rounded-xl shadow-xl shadow-emerald-500/10 hover:brightness-110 active:scale-95 disabled:opacity-50 disabled:grayscale transition-all flex items-center gap-2 relative z-[70]"
-                 >
-                    {saving ? <Loader2 size={16} className="animate-spin" /> : <Save size={18} />}
-                    {editingId ? 'SALVAR' : 'CONCLUIR'}
-                 </button>
-              </div>
-
-             {/* Corpo do Checkout */}
-             <div className="flex-1 overflow-y-auto p-6 space-y-6 no-scrollbar text-white flex flex-col bg-[#0A0A0A]">
-                
-                {/* 1. Selecionar Cliente */}
-                <div className="space-y-1.5">
-                   <label className="text-[13px] font-bold text-gray-400 flex items-center gap-2"><User size={14}/> Cliente pagador <span className="text-[#5E41FF]">*</span></label>
-                   <select 
-                     value={formData.customerId}
-                     onChange={e => setFormData({...formData, customerId: e.target.value})}
-                     className="w-full bg-[#18181a] text-white border-b-2 border-transparent hover:border-gray-700 focus:border-[#5E41FF] py-3 outline-none transition-all text-[15px] cursor-pointer shadow-inner"
-                   >
-                      <option value="">Pesquisar cliente...</option>
-                      {customers.map(c => (
-                        <option key={c.id} value={c.id}>{c.name}</option>
-                      ))}
-                   </select>
-                </div>
-
-                {/* 2. Valor da Venda */}
-                <div className="space-y-1.5 p-4 rounded-2xl bg-[#18181a] border border-white/5 hover:border-white/10 transition-colors">
-                   <label className="text-[13px] font-bold text-gray-400 flex items-center gap-2"><Calculator size={14}/> Valor Total da Venda</label>
-                   <div className="flex items-center gap-3">
-                      <span className="text-xl font-bold text-gray-500">R$</span>
-                      <input 
-                        type="number" 
-                        min="0"
-                        step="0.01"
-                        value={formData.amount || ''}
-                        onChange={e => setFormData({...formData, amount: Number(e.target.value)})}
-                        placeholder="0.00"
-                        className="w-full bg-transparent text-2xl font-bold text-white outline-none placeholder-gray-700"
-                      />
-                   </div>
-                </div>
-
-                {/* 3. Status da Venda */}
-                <div className="space-y-3">
-                   <label className="text-[13px] font-bold text-gray-400">Status de Recebimento</label>
-                   <div className="grid grid-cols-2 gap-3">
-                      <button 
-                         onClick={() => setFormData({...formData, status: 'pago'})}
-                         className={`py-3 rounded-xl border text-xs font-bold transition-all ${formData.status === 'pago' ? 'bg-emerald-500/10 border-emerald-500/50 text-emerald-400' : 'bg-black/20 border-white/5 text-gray-500'}`}
-                      >
-                         PAGO
-                      </button>
-                      <button 
-                         onClick={() => setFormData({...formData, status: 'pendente'})}
-                         className={`py-3 rounded-xl border text-xs font-bold transition-all ${formData.status === 'pendente' ? 'bg-amber-500/10 border-amber-500/50 text-amber-400' : 'bg-black/20 border-white/5 text-gray-500'}`}
-                      >
-                         PENDENTE
-                      </button>
-                   </div>
-                </div>
-
-                {/* 4. Forma de Pagamento */}
-                <div className="space-y-3 pt-2">
-                   <label className="text-[13px] font-bold text-gray-400">Meio de Pagamento</label>
-                   <div className="grid grid-cols-3 gap-3">
-                      {[
-                        { id: 'Pix', icon: <QrCode size={18}/> },
-                        { id: 'Cartão', icon: <CreditCard size={18}/> },
-                        { id: 'Dinheiro', icon: <Banknote size={18}/> }
-                      ].map(method => (
-                        <button
-                          key={method.id}
-                          onClick={() => setFormData({...formData, paymentMethod: method.id})}
-                          className={`flex flex-col items-center gap-2 p-4 rounded-2xl border transition-all ${
-                            formData.paymentMethod === method.id 
-                            ? 'bg-emerald-500/10 border-emerald-500/50 text-emerald-400 shadow-xl shadow-emerald-500/10' 
-                            : 'bg-[#18181a] border-white/5 text-gray-500 hover:border-white/20'
-                          }`}
-                        >
-                           {method.icon}
-                           <span className="text-xs font-bold">{method.id}</span>
-                        </button>
-                      ))}
-                   </div>
-                </div>
-
-                <div className="flex-1" />
-
-                <div className="p-5 rounded-2xl bg-gradient-to-br from-[#121021] to-[#0A0A0A] border border-white/10 shadow-2xl flex flex-col gap-1">
-                   <div className="flex justify-between items-end">
-                      <span className="text-sm text-gray-500 font-bold uppercase tracking-widest">Valor Final</span>
-                      <span className="text-4xl font-black text-white tracking-tighter">
-                         <span className="text-lg text-emerald-500 mr-1">R$</span>
-                         {formData.amount.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
-                      </span>
-                   </div>
-                </div>
-
-             </div>
           </div>
+          
+          <div className="flex items-center gap-3">
+            {/* Navegação de mês */}
+            <button onClick={() => setCurrentMonth(subMonths(currentMonth, 1))} className="p-3 bg-[#1a1a2e] rounded-xl hover:bg-[#2a2a4e] transition-all">
+              <ChevronLeft size={20} />
+            </button>
+            <button onClick={() => setCurrentMonth(new Date())} className="px-4 py-2 bg-[#1a1a2e] rounded-xl text-sm hover:bg-[#2a2a4e] transition-all">
+              Hoje
+            </button>
+            <button onClick={() => setCurrentMonth(addMonths(currentMonth, 1))} className="p-3 bg-[#1a1a2e] rounded-xl hover:bg-[#2a2a4e] transition-all">
+              <ChevronRight size={20} />
+            </button>
+            
+            {/* Nova venda */}
+            <button
+              onClick={() => { setEditingSale(null); setIsModalOpen(true); }}
+              className="flex items-center gap-2 px-6 py-3 bg-emerald-500 rounded-xl font-medium hover:brightness-110 transition-all"
+            >
+              <Plus size={20} />
+              Nova Venda
+            </button>
+          </div>
+        </div>
+      </div>
+
+      {/* Mensagem */}
+      {message && (
+        <div className={`max-w-7xl mx-auto mb-4 p-4 rounded-xl ${message.type === 'success' ? 'bg-green-600/20 text-green-400 border border-green-600/30' : 'bg-red-600/20 text-red-400 border border-red-600/30'}`}>
+          {message.text}
         </div>
       )}
 
+      {/* Cards de resumo */}
+      <div className="max-w-7xl mx-auto grid grid-cols-1 md:grid-cols-3 gap-4 mb-8">
+        <div className="bg-[#121021] rounded-2xl p-6 border border-white/10">
+          <div className="flex items-center gap-3 mb-2">
+            <DollarSign size={20} className="text-emerald-400" />
+            <span className="text-gray-400 text-sm">Receita do Mês</span>
+          </div>
+          <p className="text-3xl font-bold text-emerald-400">
+            R$ {totalReceita.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+          </p>
+        </div>
+        
+        <div className="bg-[#121021] rounded-2xl p-6 border border-white/10">
+          <div className="flex items-center gap-3 mb-2">
+            <ShoppingCart size={20} className="text-blue-400" />
+            <span className="text-gray-400 text-sm">Total de Vendas</span>
+          </div>
+          <p className="text-3xl font-bold text-blue-400">{totalVendas}</p>
+        </div>
+        
+        <div className="bg-[#121021] rounded-2xl p-6 border border-white/10">
+          <div className="flex items-center gap-3 mb-2">
+            <DollarSign size={20} className="text-purple-400" />
+            <span className="text-gray-400 text-sm">Ticket Médio</span>
+          </div>
+          <p className="text-3xl font-bold text-purple-400">
+            R$ {totalVendas > 0 ? (totalReceita / totalVendas).toLocaleString('pt-BR', { minimumFractionDigits: 2 }) : '0,00'}
+          </p>
+        </div>
+      </div>
+
+      {/* Busca */}
+      <div className="max-w-7xl mx-auto mb-6">
+        <div className="bg-[#121021] rounded-2xl p-4 border border-white/10">
+          <div className="relative">
+            <Search size={18} className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-500" />
+            <input
+              type="text"
+              placeholder="Buscar por cliente ou serviço..."
+              value={search}
+              onChange={e => setSearch(e.target.value)}
+              className="w-full bg-black/40 border border-white/10 rounded-xl pl-12 pr-4 py-3 outline-none focus:border-emerald-500 transition-all"
+            />
+          </div>
+        </div>
+      </div>
+
+      {/* Tabela de vendas */}
+      <div className="max-w-7xl mx-auto bg-[#121021] rounded-2xl border border-white/10 overflow-hidden">
+        {loading ? (
+          <div className="p-8 text-center text-gray-500">Carregando...</div>
+        ) : filteredSales.length === 0 ? (
+          <div className="p-8 text-center text-gray-500">
+            Nenhuma venda encontrada neste período
+          </div>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full">
+              <thead>
+                <tr className="border-b border-white/10">
+                  <th className="text-left p-4 text-sm font-medium text-gray-400">Data</th>
+                  <th className="text-left p-4 text-sm font-medium text-gray-400">Cliente</th>
+                  <th className="text-left p-4 text-sm font-medium text-gray-400">Serviço</th>
+                  <th className="text-left p-4 text-sm font-medium text-gray-400">Pagamento</th>
+                  <th className="text-right p-4 text-sm font-medium text-gray-400">Valor</th>
+                  <th className="text-right p-4 text-sm font-medium text-gray-400">Ações</th>
+                </tr>
+              </thead>
+              <tbody>
+                {filteredSales.map((sale, index) => {
+                  const saleDate = sale.date || sale.created_at
+                  return (
+                    <tr key={sale.id} className={`border-b border-white/5 ${index % 2 === 0 ? '' : 'bg-white/[0.02]'}`}>
+                      <td className="p-4">
+                        <div className="flex items-center gap-2">
+                          <Calendar size={14} className="text-gray-500" />
+                          <span className="text-sm">
+                            {formatInTimeZone(parseISO(saleDate), TIMEZONE, 'dd/MM/yyyy HH:mm')}
+                          </span>
+                        </div>
+                      </td>
+                      <td className="p-4">
+                        <div className="flex items-center gap-2">
+                          <User size={14} className="text-gray-500" />
+                          <span className="text-sm">{sale.customers?.name || '-'}</span>
+                        </div>
+                      </td>
+                      <td className="p-4">
+                        <div className="flex items-center gap-2">
+                          <Scissors size={14} className="text-gray-500" />
+                          <span className="text-sm">{sale.services?.name || '-'}</span>
+                        </div>
+                      </td>
+                      <td className="p-4">
+                        <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-medium bg-white/10">
+                          {getPaymentIcon(sale.payment_method)}
+                          {sale.payment_method}
+                        </span>
+                      </td>
+                      <td className="p-4 text-right">
+                        <span className="text-lg font-bold text-emerald-400">
+                          R$ {Number(sale.amount).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+                        </span>
+                      </td>
+                      <td className="p-4 text-right">
+                        <div className="flex items-center justify-end gap-2">
+                          <button
+                            onClick={() => handleEdit(sale)}
+                            className="p-2 bg-blue-500/20 text-blue-400 rounded-lg hover:bg-blue-500/30 transition-all"
+                            title="Editar"
+                          >
+                            <Edit2 size={16} />
+                          </button>
+                          <button
+                            onClick={() => handleDelete(sale.id)}
+                            className="p-2 bg-red-500/20 text-red-400 rounded-lg hover:bg-red-500/30 transition-all"
+                            title="Excluir"
+                          >
+                            <Trash2 size={16} />
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  )
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
+
+      {/* Modal */}
+      {isModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80" onClick={() => setIsModalOpen(false)}>
+          <div className="bg-[#121021] rounded-3xl w-full max-w-md p-8" onClick={e => e.stopPropagation()}>
+            <div className="flex items-center justify-between mb-6">
+              <h2 className="text-2xl font-bold">
+                {editingSale ? 'Editar Venda' : 'Nova Venda'}
+              </h2>
+              <button onClick={() => setIsModalOpen(false)} className="p-2 hover:bg-white/10 rounded-lg">
+                <X size={24} />
+              </button>
+            </div>
+            
+            <form onSubmit={handleSubmit} className="space-y-6">
+              {/* Cliente */}
+              <div>
+                <label className="block text-sm font-medium text-gray-400 mb-2">Cliente</label>
+                <div className="relative">
+                  <User className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-500" size={20} />
+                  <select
+                    required
+                    value={formData.customer_id}
+                    onChange={e => setFormData({...formData, customer_id: e.target.value})}
+                    className="w-full bg-black/40 border border-white/10 rounded-xl pl-12 pr-4 py-4 outline-none focus:border-emerald-500 transition-all"
+                  >
+                    <option value="">Selecione o cliente</option>
+                    {customers.map(c => (
+                      <option key={c.id} value={c.id}>{c.name}</option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+              
+              {/* Serviço */}
+              <div>
+                <label className="block text-sm font-medium text-gray-400 mb-2">Serviço</label>
+                <div className="relative">
+                  <Scissors className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-500" size={20} />
+                  <select
+                    required
+                    value={formData.service_id}
+                    onChange={e => handleServiceChange(e.target.value)}
+                    className="w-full bg-black/40 border border-white/10 rounded-xl pl-12 pr-4 py-4 outline-none focus:border-emerald-500 transition-all"
+                  >
+                    <option value="">Selecione o serviço</option>
+                    {services.map(s => (
+                      <option key={s.id} value={s.id}>{s.name} - R$ {s.price.toFixed(2)}</option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+              
+              {/* Valor */}
+              <div>
+                <label className="block text-sm font-medium text-gray-400 mb-2">Valor (R$)</label>
+                <div className="relative">
+                  <DollarSign className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-500" size={20} />
+                  <input
+                    type="number"
+                    step="0.01"
+                    required
+                    value={formData.amount}
+                    onChange={e => setFormData({...formData, amount: e.target.value})}
+                    className="w-full bg-black/40 border border-white/10 rounded-xl pl-12 pr-4 py-4 outline-none focus:border-emerald-500 transition-all"
+                    placeholder="0,00"
+                  />
+                </div>
+              </div>
+              
+              {/* Forma de pagamento */}
+              <div>
+                <label className="block text-sm font-medium text-gray-400 mb-3">Forma de Pagamento</label>
+                <div className="grid grid-cols-4 gap-2">
+                  {[
+                    { id: 'Pix', icon: <Smartphone size={18} /> },
+                    { id: 'Crédito', icon: <CreditCard size={18} /> },
+                    { id: 'Débito', icon: <Banknote size={18} /> },
+                    { id: 'Dinheiro', icon: <Banknote size={18} /> }
+                  ].map(method => (
+                    <button
+                      key={method.id}
+                      type="button"
+                      onClick={() => setFormData({...formData, payment_method: method.id})}
+                      className={`p-3 rounded-xl border transition-all flex flex-col items-center gap-1 ${
+                        formData.payment_method === method.id 
+                          ? 'bg-emerald-500/20 border-emerald-500 text-emerald-400' 
+                          : 'border-white/10 hover:border-white/30 text-gray-500'
+                      }`}
+                    >
+                      {method.icon}
+                      <span className="text-[10px] font-medium">{method.id}</span>
+                    </button>
+                  ))}
+                </div>
+              </div>
+              
+              {/* Data e Hora */}
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-400 mb-2">Data</label>
+                  <input
+                    type="date"
+                    required
+                    value={formData.date}
+                    onChange={e => setFormData({...formData, date: e.target.value})}
+                    className="w-full bg-black/40 border border-white/10 rounded-xl px-4 py-4 outline-none focus:border-emerald-500 transition-all"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-400 mb-2">Hora</label>
+                  <input
+                    type="time"
+                    required
+                    value={formData.time}
+                    onChange={e => setFormData({...formData, time: e.target.value})}
+                    className="w-full bg-black/40 border border-white/10 rounded-xl px-4 py-4 outline-none focus:border-emerald-500 transition-all"
+                  />
+                </div>
+              </div>
+              
+              {/* Botão */}
+              <button
+                type="submit"
+                disabled={saving}
+                className="w-full py-4 bg-emerald-500 text-black font-bold rounded-xl hover:brightness-110 transition-all flex items-center justify-center gap-2 disabled:opacity-50"
+              >
+                {saving ? <Loader2 size={20} className="animate-spin" /> : <Check size={20} />}
+                {saving ? 'Salvando...' : editingSale ? 'Atualizar Venda' : 'Registrar Venda'}
+              </button>
+            </form>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

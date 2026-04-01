@@ -1,6 +1,6 @@
 -- ============================================
--- BANCO DE DADOS COMPLETO - MOÇA CHIQ
--- Recriar tabelas da agenda do zero
+-- BANCO DE DADOS - MOÇA CHIQ
+-- Recriar tudo do zero
 -- ============================================
 
 -- 1. Tabela de SERVIÇOS
@@ -41,7 +41,9 @@ CREATE TABLE IF NOT EXISTS appointments (
   updated_at TIMESTAMPTZ DEFAULT NOW()
 );
 
--- 4. Tabela de VENDAS
+-- 4. Tabela de VENDAS (reescrita do zero)
+DROP TABLE IF EXISTS vendas CASCADE;
+
 CREATE TABLE IF NOT EXISTS vendas (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   customer_id UUID REFERENCES customers(id) ON DELETE SET NULL,
@@ -54,13 +56,21 @@ CREATE TABLE IF NOT EXISTS vendas (
 );
 
 -- 5. Índices para performance
-CREATE INDEX IF NOT EXISTS idx_appointments_start ON appointments(start_time);
-CREATE INDEX IF NOT EXISTS idx_appointments_status ON appointments(status);
-CREATE INDEX IF NOT EXISTS idx_appointments_customer ON appointments(customer_id);
-CREATE INDEX IF NOT EXISTS idx_vendas_date ON vendas(date);
-CREATE INDEX IF NOT EXISTS idx_customers_name ON customers(name);
+DROP INDEX IF EXISTS idx_appointments_start;
+DROP INDEX IF EXISTS idx_appointments_status;
+DROP INDEX IF EXISTS idx_appointments_customer;
+DROP INDEX IF EXISTS idx_vendas_date;
+DROP INDEX IF EXISTS idx_customers_name;
 
--- 6. Inserir dados iniciais
+CREATE INDEX idx_appointments_start ON appointments(start_time);
+CREATE INDEX idx_appointments_status ON appointments(status);
+CREATE INDEX idx_appointments_customer ON appointments(customer_id);
+CREATE INDEX idx_vendas_date ON vendas(date);
+CREATE INDEX idx_vendas_customer ON vendas(customer_id);
+CREATE INDEX idx_customers_name ON customers(name);
+
+-- 6. Inserir dados iniciais - SERVIÇOS
+DELETE FROM services;
 INSERT INTO services (name, price, duration_minutes, description) VALUES
   ('Corte Feminino', 80.00, 60, 'Corte feminino clássico'),
   ('Corte Masculino', 50.00, 30, 'Corte masculino'),
@@ -70,18 +80,32 @@ INSERT INTO services (name, price, duration_minutes, description) VALUES
   ('Manicure', 40.00, 45, 'Manicure tradicional'),
   ('Pedicure', 50.00, 60, 'Pedicure'),
   ('Sobrancelha', 30.00, 20, 'Design de sobrancelha'),
-  ('Maquiagem', 150.00, 60, 'Maquiagem profissional')
-ON CONFLICT DO NOTHING;
+  ('Maquiagem', 150.00, 60, 'Maquiagem profissional');
 
+-- 7. Inserir dados iniciais - CLIENTES
+DELETE FROM customers;
 INSERT INTO customers (name, whatsapp, email) VALUES
   ('Maria Silva', '(21) 99999-0001', 'maria@email.com'),
   ('Ana Costa', '(21) 99999-0002', 'ana@email.com'),
   ('Julia Santos', '(21) 99999-0003', 'julia@email.com'),
   ('Carla Oliveira', '(21) 99999-0004', 'carla@email.com'),
-  ('Fernanda Lima', '(21) 99999-0005', 'fernanda@email.com')
-ON CONFLICT DO NOTHING;
+  ('Fernanda Lima', '(21) 99999-0005', 'fernanda@email.com');
 
--- 7. Função para verificar conflitos de horário
+-- 8. Inserir dados iniciais - VENDAS (exemplos do mês atual)
+DELETE FROM vendas;
+INSERT INTO vendas (customer_id, service_id, amount, payment_method, date)
+SELECT 
+  c.id as customer_id,
+  s.id as service_id,
+  s.price as amount,
+  (ARRAY['Pix', 'Crédito', 'Débito', 'Dinheiro'])[floor(random() * 4 + 1)::int] as payment_method,
+  NOW() - (random() * 30 || ' days')::interval as date
+FROM customers c
+CROSS JOIN services s
+WHERE c.name = 'Maria Silva'
+LIMIT 5;
+
+-- 9. Função para verificar conflitos de horário
 CREATE OR REPLACE FUNCTION check_time_conflict(
   p_start_time TIMESTAMPTZ,
   p_end_time TIMESTAMPTZ,
@@ -102,11 +126,20 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER;
 
--- 8. Permissões
+-- 10. Permissões RLS
 ALTER TABLE services ENABLE ROW LEVEL SECURITY;
 ALTER TABLE customers ENABLE ROW LEVEL SECURITY;
 ALTER TABLE appointments ENABLE ROW LEVEL SECURITY;
 ALTER TABLE vendas ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS "Enable all for service role" ON services;
+DROP POLICY IF EXISTS "Enable all for authenticated" ON services;
+DROP POLICY IF EXISTS "Enable all for service role" ON customers;
+DROP POLICY IF EXISTS "Enable all for authenticated" ON customers;
+DROP POLICY IF EXISTS "Enable all for service role" ON appointments;
+DROP POLICY IF EXISTS "Enable all for authenticated" ON appointments;
+DROP POLICY IF EXISTS "Enable all for service role" ON vendas;
+DROP POLICY IF EXISTS "Enable all for authenticated" ON vendas;
 
 CREATE POLICY "Enable all for service role" ON services FOR ALL TO service_role USING (true) WITH CHECK (true);
 CREATE POLICY "Enable all for authenticated" ON services FOR ALL TO authenticated USING (true) WITH CHECK (true);
@@ -118,7 +151,7 @@ CREATE POLICY "Enable all for service role" ON vendas FOR ALL TO service_role US
 CREATE POLICY "Enable all for authenticated" ON vendas FOR ALL TO authenticated USING (true) WITH CHECK (true);
 
 -- Verificar resultado
-SELECT 'Services: ' || COUNT(*) FROM services;
-SELECT 'Customers: ' || COUNT(*) FROM customers;
-SELECT 'Appointments: ' || COUNT(*) FROM appointments;
-SELECT 'Vendas: ' || COUNT(*) FROM vendas;
+SELECT 'Services: ' || COUNT(*) as result FROM services;
+SELECT 'Customers: ' || COUNT(*) as result FROM customers;
+SELECT 'Appointments: ' || COUNT(*) as result FROM appointments;
+SELECT 'Vendas: ' || COUNT(*) as result FROM vendas;
