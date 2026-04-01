@@ -1,10 +1,12 @@
 -- ============================================
--- BANCO DE DADOS - MOÇA CHIQ
--- Recriar tudo do zero
+-- BANCO DE DADOS COMPLETO - MOÇA CHIQ
+-- Recriar TODAS as tabelas do zero
+-- Executar no Supabase SQL Editor
 -- ============================================
 
 -- 1. Tabela de SERVIÇOS
-CREATE TABLE IF NOT EXISTS services (
+DROP TABLE IF EXISTS services CASCADE;
+CREATE TABLE services (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   name TEXT NOT NULL,
   price DECIMAL(10, 2) DEFAULT 0,
@@ -16,7 +18,8 @@ CREATE TABLE IF NOT EXISTS services (
 );
 
 -- 2. Tabela de CLIENTES
-CREATE TABLE IF NOT EXISTS customers (
+DROP TABLE IF EXISTS customers CASCADE;
+CREATE TABLE customers (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   name TEXT NOT NULL,
   whatsapp TEXT,
@@ -29,7 +32,8 @@ CREATE TABLE IF NOT EXISTS customers (
 );
 
 -- 3. Tabela de AGENDAMENTOS
-CREATE TABLE IF NOT EXISTS appointments (
+DROP TABLE IF EXISTS appointments CASCADE;
+CREATE TABLE appointments (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   customer_id UUID REFERENCES customers(id) ON DELETE SET NULL,
   service_id UUID REFERENCES services(id) ON DELETE SET NULL,
@@ -41,10 +45,9 @@ CREATE TABLE IF NOT EXISTS appointments (
   updated_at TIMESTAMPTZ DEFAULT NOW()
 );
 
--- 4. Tabela de VENDAS (reescrita do zero)
+-- 4. Tabela de VENDAS
 DROP TABLE IF EXISTS vendas CASCADE;
-
-CREATE TABLE IF NOT EXISTS vendas (
+CREATE TABLE vendas (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   customer_id UUID REFERENCES customers(id) ON DELETE SET NULL,
   service_id UUID REFERENCES services(id) ON DELETE SET NULL,
@@ -60,7 +63,9 @@ DROP INDEX IF EXISTS idx_appointments_start;
 DROP INDEX IF EXISTS idx_appointments_status;
 DROP INDEX IF EXISTS idx_appointments_customer;
 DROP INDEX IF EXISTS idx_vendas_date;
+DROP INDEX IF EXISTS idx_vendas_customer;
 DROP INDEX IF EXISTS idx_customers_name;
+DROP INDEX IF EXISTS idx_customers_active;
 
 CREATE INDEX idx_appointments_start ON appointments(start_time);
 CREATE INDEX idx_appointments_status ON appointments(status);
@@ -68,8 +73,9 @@ CREATE INDEX idx_appointments_customer ON appointments(customer_id);
 CREATE INDEX idx_vendas_date ON vendas(date);
 CREATE INDEX idx_vendas_customer ON vendas(customer_id);
 CREATE INDEX idx_customers_name ON customers(name);
+CREATE INDEX idx_customers_active ON customers(active);
 
--- 6. Inserir dados iniciais - SERVIÇOS
+-- 6. Dados iniciais - SERVIÇOS
 DELETE FROM services;
 INSERT INTO services (name, price, duration_minutes, description) VALUES
   ('Corte Feminino', 80.00, 60, 'Corte feminino clássico'),
@@ -82,16 +88,19 @@ INSERT INTO services (name, price, duration_minutes, description) VALUES
   ('Sobrancelha', 30.00, 20, 'Design de sobrancelha'),
   ('Maquiagem', 150.00, 60, 'Maquiagem profissional');
 
--- 7. Inserir dados iniciais - CLIENTES
+-- 7. Dados iniciais - CLIENTES
 DELETE FROM customers;
-INSERT INTO customers (name, whatsapp, email) VALUES
-  ('Maria Silva', '(21) 99999-0001', 'maria@email.com'),
-  ('Ana Costa', '(21) 99999-0002', 'ana@email.com'),
-  ('Julia Santos', '(21) 99999-0003', 'julia@email.com'),
-  ('Carla Oliveira', '(21) 99999-0004', 'carla@email.com'),
-  ('Fernanda Lima', '(21) 99999-0005', 'fernanda@email.com');
+INSERT INTO customers (name, whatsapp, phone, email, notes) VALUES
+  ('Maria Silva', '(21) 99999-0001', '(21) 3333-0001', 'maria@email.com', 'Cliente VIP - prefere horário matinal'),
+  ('Ana Costa', '(21) 99999-0002', '(21) 3333-0002', 'ana@email.com', NULL),
+  ('Julia Santos', '(21) 99999-0003', '(21) 3333-0003', 'julia@email.com', 'Alérgica a produtos com amônia'),
+  ('Carla Oliveira', '(21) 99999-0004', '(21) 3333-0004', 'carla@email.com', 'Prefere tons claros'),
+  ('Fernanda Lima', '(21) 99999-0005', '(21) 3333-0005', 'fernanda@email.com', 'Cliente antiga - 2 anos'),
+  ('Patrícia Rocha', '(21) 99999-0006', '(21) 3333-0006', 'patricia@email.com', NULL),
+  ('Renata Alves', '(21) 99999-0007', '(21) 3333-0007', 'renata@email.com', 'Sempre às sextas'),
+  ('Beatriz Souza', '(21) 99999-0008', '(21) 3333-0008', 'beatriz@email.com', NULL);
 
--- 8. Inserir dados iniciais - VENDAS (exemplos do mês atual)
+-- 8. Dados iniciais - VENDAS (exemplos do mês atual)
 DELETE FROM vendas;
 INSERT INTO vendas (customer_id, service_id, amount, payment_method, date)
 SELECT 
@@ -99,13 +108,26 @@ SELECT
   s.id as service_id,
   s.price as amount,
   (ARRAY['Pix', 'Crédito', 'Débito', 'Dinheiro'])[floor(random() * 4 + 1)::int] as payment_method,
-  NOW() - (random() * 30 || ' days')::interval as date
+  NOW() - (random() * 15 || ' days')::interval as date
 FROM customers c
 CROSS JOIN services s
 WHERE c.name = 'Maria Silva'
 LIMIT 5;
 
+INSERT INTO vendas (customer_id, service_id, amount, payment_method, date)
+SELECT 
+  c.id as customer_id,
+  s.id as service_id,
+  s.price as amount,
+  'Pix' as payment_method,
+  NOW() - (random() * 10 || ' days')::interval as date
+FROM customers c
+CROSS JOIN services s
+WHERE c.name = 'Ana Costa'
+LIMIT 3;
+
 -- 9. Função para verificar conflitos de horário
+DROP FUNCTION IF EXISTS check_time_conflict;
 CREATE OR REPLACE FUNCTION check_time_conflict(
   p_start_time TIMESTAMPTZ,
   p_end_time TIMESTAMPTZ,
@@ -126,7 +148,32 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER;
 
--- 10. Permissões RLS
+-- 10. Função para atualizar timestamp
+CREATE OR REPLACE FUNCTION update_updated_at()
+RETURNS TRIGGER AS $$
+BEGIN
+  NEW.updated_at = NOW();
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+-- 11. Triggers para updated_at
+DROP TRIGGER IF EXISTS update_services_updated_at ON services;
+CREATE TRIGGER update_services_updated_at
+  BEFORE UPDATE ON services
+  FOR EACH ROW EXECUTE FUNCTION update_updated_at();
+
+DROP TRIGGER IF EXISTS update_customers_updated_at ON customers;
+CREATE TRIGGER update_customers_updated_at
+  BEFORE UPDATE ON customers
+  FOR EACH ROW EXECUTE FUNCTION update_updated_at();
+
+DROP TRIGGER IF EXISTS update_appointments_updated_at ON appointments;
+CREATE TRIGGER update_appointments_updated_at
+  BEFORE UPDATE ON appointments
+  FOR EACH ROW EXECUTE FUNCTION update_updated_at();
+
+-- 12. Permissões RLS
 ALTER TABLE services ENABLE ROW LEVEL SECURITY;
 ALTER TABLE customers ENABLE ROW LEVEL SECURITY;
 ALTER TABLE appointments ENABLE ROW LEVEL SECURITY;

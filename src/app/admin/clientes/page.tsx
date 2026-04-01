@@ -1,359 +1,576 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useCallback } from 'react'
 import { 
-  Users, 
-  Plus, 
-  Search, 
-  Filter, 
-  MoreHorizontal, 
-  MessageCircle,
-  Calendar,
-  CheckSquare,
-  X,
-  Camera,
-  Save,
-  Loader2,
+  Users,
+  Plus,
+  Search,
   Trash2,
   Edit2,
-  ShieldAlert,
+  X,
+  Phone,
+  Mail,
+  Calendar,
+  MessageCircle,
+  ChevronLeft,
+  ChevronRight,
+  Check,
+  Loader2,
+  User,
   ShieldCheck,
-  Star,
-  Zap,
-  RefreshCw
+  ShieldAlert,
+  Eye,
+  EyeOff
 } from 'lucide-react'
-import { addCustomer, getCustomers, toggleBlockCustomer, updateCustomer, deleteCustomer } from '@/app/actions/admin'
+import { format, parseISO } from 'date-fns'
+import { ptBR } from 'date-fns/locale'
 
-export default function ClientsPage() {
-  const [clients, setClients] = useState<any[]>([])
+interface Customer {
+  id: string
+  name: string
+  whatsapp: string | null
+  phone: string | null
+  email: string | null
+  notes: string | null
+  active: boolean
+  created_at: string
+}
+
+interface FormData {
+  name: string
+  whatsapp: string
+  phone: string
+  email: string
+  notes: string
+}
+
+export default function ClientesPage() {
+  const [customers, setCustomers] = useState<Customer[]>([])
   const [loading, setLoading] = useState(true)
-  const [search, setSearch] = useState('')
-  
-  // Modal State
-  const [isModalOpen, setIsModalOpen] = useState(false)
-  const [editingClient, setEditingClient] = useState<any>(null)
   const [saving, setSaving] = useState(false)
   
-  // Form State
-  const [formData, setFormData] = useState({
+  const [search, setSearch] = useState('')
+  const [currentPage, setCurrentPage] = useState(1)
+  const itemsPerPage = 10
+  
+  const [isModalOpen, setIsModalOpen] = useState(false)
+  const [editingCustomer, setEditingCustomer] = useState<Customer | null>(null)
+  const [showInactive, setShowInactive] = useState(false)
+  
+  const [formData, setFormData] = useState<FormData>({
     name: '',
     whatsapp: '',
+    phone: '',
+    email: '',
     notes: ''
   })
+  
+  const [message, setMessage] = useState<{type: 'success' | 'error', text: string} | null>(null)
 
-  async function fetchClients() {
+  const showMessage = (type: 'success' | 'error', text: string) => {
+    setMessage({ type, text })
+    setTimeout(() => setMessage(null), 3000)
+  }
+
+  const fetchCustomers = useCallback(async () => {
     setLoading(true)
     try {
-       const data = await getCustomers()
-       setClients(data)
-    } catch (error) {
-       console.error(error)
+      const response = await fetch('/api/customers')
+      const data = await response.json()
+      
+      if (!response.ok) throw new Error(data.error)
+      
+      setCustomers(data.data || [])
+    } catch (error: any) {
+      console.error('Erro ao carregar clientes:', error)
+      showMessage('error', 'Erro ao carregar clientes')
     }
     setLoading(false)
-  }
-
-  useEffect(() => {
-    fetchClients()
   }, [])
 
-  const filteredClients = clients.filter(c => 
-    (c.name || '').toLowerCase().includes(search.toLowerCase()) || 
-    (c.whatsapp && c.whatsapp.includes(search))
+  useEffect(() => {
+    fetchCustomers()
+  }, [fetchCustomers])
+
+  const filteredCustomers = customers.filter(c => {
+    const matchesSearch = !search || 
+      c.name?.toLowerCase().includes(search.toLowerCase()) ||
+      c.whatsapp?.includes(search) ||
+      c.email?.toLowerCase().includes(search.toLowerCase())
+    const matchesActive = showInactive ? true : c.active
+    return matchesSearch && matchesActive
+  })
+
+  const totalCustomers = filteredCustomers.length
+  const activeCustomers = filteredCustomers.filter(c => c.active).length
+  const totalPages = Math.ceil(totalCustomers / itemsPerPage)
+  const paginatedCustomers = filteredCustomers.slice(
+    (currentPage - 1) * itemsPerPage,
+    currentPage * itemsPerPage
   )
 
-  const handleToggleBlock = async (id: string, name: string, currentStatus: boolean) => {
-    const action = currentStatus ? 'desbloquear' : 'bloquear'
-    if (!confirm(`Deseja realmente ${action} a cliente ${name}?`)) return
-
-    try {
-      await toggleBlockCustomer(id, currentStatus)
-      await fetchClients()
-    } catch (error: any) {
-      alert('Erro ao alterar status: ' + error.message)
-    }
-  }
-
-  const handleDelete = async (id: string, name: string) => {
-    if (!confirm(`⚠ EXCLUSÃO DEFINITIVA: Tem certeza que deseja remover ${name} do banco de dados? Esta ação não pode ser desfeita.`)) return
-    try {
-      await deleteCustomer(id)
-      await fetchClients()
-    } catch (error: any) {
-      alert('Erro ao excluir: ' + error.message)
-    }
-  }
-
-  const openEditModal = (client: any) => {
-    setEditingClient(client)
-    setFormData({
-      name: client.name,
-      whatsapp: client.whatsapp || '',
-      notes: client.notes || ''
-    })
-    setIsModalOpen(true)
-  }
-
-  const handleSaveClient = async (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     setSaving(true)
 
     try {
-      if (editingClient) {
-        await updateCustomer(editingClient.id, formData)
+      if (editingCustomer) {
+        const response = await fetch('/api/customers', {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            id: editingCustomer.id,
+            name: formData.name,
+            whatsapp: formData.whatsapp || null,
+            phone: formData.phone || null,
+            email: formData.email || null,
+            notes: formData.notes || null
+          })
+        })
+        
+        if (!response.ok) {
+          const data = await response.json()
+          throw new Error(data.error || 'Erro ao atualizar')
+        }
+        
+        showMessage('success', 'Cliente atualizado com sucesso!')
       } else {
-        await addCustomer(formData)
+        const response = await fetch('/api/customers', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            name: formData.name,
+            whatsapp: formData.whatsapp || null,
+            phone: formData.phone || null,
+            email: formData.email || null,
+            notes: formData.notes || null
+          })
+        })
+        
+        if (!response.ok) {
+          const data = await response.json()
+          throw new Error(data.error || 'Erro ao criar')
+        }
+        
+        showMessage('success', 'Cliente cadastrado com sucesso!')
       }
       
-      await fetchClients()
       setIsModalOpen(false)
-      setEditingClient(null)
-      setFormData({ name: '', whatsapp: '', notes: '' })
+      setEditingCustomer(null)
+      setFormData({ name: '', whatsapp: '', phone: '', email: '', notes: '' })
+      fetchCustomers()
     } catch (error: any) {
-      alert('Erro ao salvar: ' + error.message)
+      showMessage('error', error.message)
     }
-    
+
     setSaving(false)
   }
 
+  const handleEdit = (customer: Customer) => {
+    setEditingCustomer(customer)
+    setFormData({
+      name: customer.name || '',
+      whatsapp: customer.whatsapp || '',
+      phone: customer.phone || '',
+      email: customer.email || '',
+      notes: customer.notes || ''
+    })
+    setIsModalOpen(true)
+  }
+
+  const handleToggleActive = async (id: string, currentActive: boolean) => {
+    const action = currentActive ? 'desativar' : 'reativar'
+    if (!confirm(`Deseja ${action} este cliente?`)) return
+
+    try {
+      const response = await fetch('/api/customers', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          id,
+          active: !currentActive
+        })
+      })
+      
+      if (!response.ok) throw new Error('Erro ao atualizar')
+      
+      showMessage('success', `Cliente ${action === 'desativar' ? 'desativado' : 'reativado'}!`)
+      fetchCustomers()
+    } catch (error) {
+      showMessage('error', 'Erro ao atualizar cliente')
+    }
+  }
+
+  const handleDelete = async (id: string) => {
+    if (!confirm('⚠️ Excluir permanentemente este cliente? Esta ação não pode ser desfeita.')) return
+
+    try {
+      const response = await fetch(`/api/customers?id=${id}`, {
+        method: 'DELETE'
+      })
+
+      if (!response.ok) throw new Error('Erro ao excluir')
+
+      showMessage('success', 'Cliente excluído!')
+      fetchCustomers()
+    } catch (error) {
+      showMessage('error', 'Erro ao excluir cliente')
+    }
+  }
+
+  const formatPhone = (value: string) => {
+    const numbers = value.replace(/\D/g, '')
+    if (numbers.length <= 11) {
+      return numbers.replace(/(\d{2})(\d{5})(\d{4})/, '($1) $2-$3')
+    }
+    return value
+  }
+
+  const handlePhoneChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const formatted = formatPhone(e.target.value)
+    setFormData({ ...formData, whatsapp: formatted })
+  }
+
   return (
-    <div className="max-w-[1400px] mx-auto space-y-8 animate-in fade-in duration-700 pb-20">
-      {/* Premium Header */}
-      <div className="flex flex-col gap-6 lg:flex-row lg:items-center lg:justify-between bg-[#121021] p-8 rounded-[2.5rem] border border-white/5 shadow-2xl">
-        <div className="flex items-center gap-6">
-           <div className="w-16 h-16 rounded-3xl bg-[#5E41FF] flex items-center justify-center shadow-lg shadow-[#5E41FF]/20">
-              <Users size={32} className="text-white" />
-           </div>
-           <div>
-              <h1 className="text-3xl font-black italic uppercase tracking-tighter text-white">Central de Clientes</h1>
-              <p className="text-sm text-gray-500 mt-1 font-medium italic">Base VIP: {clients.length} pessoas cadastradas</p>
-           </div>
-        </div>
-        <div className="flex items-center gap-4">
-           <button 
-             onClick={fetchClients}
-             className="p-4 bg-white/5 text-gray-400 hover:text-white rounded-2xl border border-white/5 transition-all"
-           >
-              <RefreshCw size={20} className={loading ? "animate-spin" : ""} />
-           </button>
-           <button 
-             onClick={() => { setEditingClient(null); setFormData({ name: '', whatsapp: '', notes: '' }); setIsModalOpen(true); }}
-             className="flex items-center gap-3 px-8 py-4 bg-[#5E41FF] text-white rounded-2xl text-[11px] font-black uppercase tracking-widest shadow-xl shadow-[#5E41FF]/20 hover:scale-[1.02] active:scale-95 transition-all"
-           >
-             <Plus size={20} /> Novo Cadastro VIP
-           </button>
-        </div>
-      </div>
-
-      {/* Filter Bar Premium */}
-      <div className="flex flex-col lg:flex-row items-center justify-between gap-6">
-         <div className="relative flex-1 max-w-xl w-full">
-            <Search className="absolute left-5 top-1/2 -translate-y-1/2 text-gray-500" size={20} />
-            <input 
-              type="text" 
-              placeholder="Pesquisar por nome ou WhatsApp... " 
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              className="w-full pl-14 pr-8 py-5 bg-[#121021]/50 border border-white/5 rounded-[2rem] text-sm focus:border-[#5E41FF]/50 outline-none transition-all placeholder-gray-600 text-white font-bold"
-            />
-         </div>
-         <div className="flex items-center gap-3 w-full lg:w-auto">
-            <button className="flex-1 lg:flex-none px-6 py-4 bg-white/5 border border-white/5 rounded-2xl text-[10px] font-black uppercase tracking-widest text-gray-400 hover:text-white transition-all">
-               <Filter size={16} className="inline mr-2" /> Filtrar
-            </button>
-            <div className="h-10 w-[1px] bg-white/5 hidden lg:block" />
-            <div className="flex items-center gap-2">
-               <span className="text-[10px] font-black text-gray-600 uppercase tracking-widest">Exibição:</span>
-               <button className="p-3 bg-[#5E41FF]/10 text-[#5E41FF] rounded-xl border border-[#5E41FF]/20"><CheckSquare size={16} /></button>
+    <div className="min-h-screen bg-[#0A0A0A] text-white p-6">
+      
+      {/* Header */}
+      <div className="max-w-7xl mx-auto mb-8">
+        <div className="flex items-center justify-between flex-wrap gap-4">
+          <div className="flex items-center gap-4">
+            <div className="w-14 h-14 rounded-2xl bg-[#5E41FF] flex items-center justify-center">
+              <Users size={28} className="text-white" />
             </div>
-         </div>
-      </div>
-
-      {/* Modern Table Container */}
-      <div className="bg-[#121021] border border-white/5 rounded-[3rem] overflow-hidden shadow-2xl relative">
-         <div className="overflow-x-auto no-scrollbar">
-            <table className="w-full text-left border-collapse">
-               <thead>
-                  <tr className="bg-white/5 text-[10px] uppercase tracking-widest font-black text-gray-500">
-                     <th className="px-8 py-6 w-10 text-center"><CheckSquare size={14} className="mx-auto opacity-30" /></th>
-                     <th className="px-8 py-6">Cliente VIP</th>
-                     <th className="px-8 py-6">Status / Acesso</th>
-                     <th className="px-8 py-6">Contato</th>
-                     <th className="px-8 py-6 text-center">Fidelidade</th>
-                     <th className="px-8 py-6 text-right pr-12">Ações</th>
-                  </tr>
-               </thead>
-               <tbody className="divide-y divide-white/[0.03]">
-                  {loading ? (
-                    <tr>
-                      <td colSpan={6} className="px-8 py-40 text-center">
-                         <div className="flex flex-col items-center gap-6">
-                            <Zap size={40} className="animate-pulse text-[#5E41FF]" />
-                            <span className="text-[11px] font-black uppercase tracking-widest text-[#5E41FF] animate-bounce">Sincronizando Base de Dados...</span>
-                         </div>
-                      </td>
-                    </tr>
-                  ) : filteredClients.length === 0 ? (
-                    <tr>
-                      <td colSpan={6} className="px-8 py-40 text-center">
-                         <p className="text-gray-500 font-bold italic">Nenhum cliente localizado com estes critérios.</p>
-                      </td>
-                    </tr>
-                  ) : filteredClients.map((client) => (
-                    <tr key={client.id} className="group hover:bg-white/5 transition-all">
-                       <td className="px-8 py-6 text-center"><input type="checkbox" className="w-4 h-4 rounded bg-black/40 border-white/10 text-[#5E41FF] focus:ring-0" /></td>
-                        <td className="px-8 py-6">
-                          <div className="flex items-center gap-4">
-                             <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-gray-500/10 to-transparent flex items-center justify-center border border-white/5 relative">
-                                <Users size={20} className="text-gray-400 group-hover:text-white transition-colors" />
-                                {client.loyalty_points > 5 && <div className="absolute -top-2 -right-2 w-5 h-5 bg-yellow-500 rounded-full flex items-center justify-center border-2 border-[#121021]"><Star size={10} className="text-[#121021] fill-[#121021]" /></div>}
-                             </div>
-                             <div className="flex flex-col">
-                                <span className="font-black text-white text-[15px] tracking-tight group-hover:text-[#5E41FF] transition-colors">{client.name}</span>
-                                <span className="text-[10px] text-gray-500 font-bold uppercase tracking-widest mt-0.5 max-w-[200px] truncate">{client.notes || 'Sem anotações internas'}</span>
-                             </div>
-                          </div>
-                        </td>
-                        <td className="px-8 py-6">
-                           {client.is_blocked ? (
-                             <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-red-500/10 text-red-500 text-[9px] font-black uppercase tracking-tighter ring-1 ring-red-500/30">
-                                <ShieldAlert size={12} /> Bloqueado no App
-                             </div>
-                           ) : (
-                             <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-emerald-500/10 text-emerald-500 text-[9px] font-black uppercase tracking-tighter ring-1 ring-emerald-500/30">
-                                <ShieldCheck size={12} /> Liberado / VIP
-                             </div>
-                           )}
-                        </td>
-                        <td className="px-8 py-6">
-                           <div className="flex items-center gap-3 text-sm font-bold text-white/80">
-                              <div className="w-8 h-8 rounded-full bg-green-500/10 flex items-center justify-center text-green-500 border border-green-500/20">
-                                 <MessageCircle size={14} />
-                              </div>
-                              {client.whatsapp}
-                           </div>
-                        </td>
-                        <td className="px-8 py-6 text-center">
-                           <div className="inline-flex flex-col items-center">
-                              <span className="text-lg font-black text-white tracking-tighter">{client.loyalty_points || 0}</span>
-                              <span className="text-[9px] font-black text-gray-600 uppercase tracking-widest">Pontos</span>
-                           </div>
-                        </td>
-                        <td className="px-8 py-6 text-right space-x-2 pr-12">
-                           {/* Botão de Bloqueio Rápido */}
-                           <button 
-                             onClick={(e) => { e.stopPropagation(); handleToggleBlock(client.id, client.name, client.is_blocked); }}
-                             className={`p-3 rounded-2xl border transition-all ${client.is_blocked ? 'bg-emerald-500/10 text-emerald-500 border-emerald-500/20 hover:bg-emerald-500/20' : 'bg-red-500/10 text-red-500 border-red-500/20 hover:bg-red-500/20'}`}
-                             title={client.is_blocked ? "Desbloquear Acesso" : "Bloquear Acesso"}
-                           >
-                              {client.is_blocked ? <ShieldCheck size={18} /> : <ShieldAlert size={18} />}
-                           </button>
-                           
-                           {/* Botão de Edição */}
-                           <button 
-                             onClick={(e) => { e.stopPropagation(); openEditModal(client); }}
-                             className="p-3 bg-white/5 text-gray-500 hover:text-blue-400 rounded-2xl border border-white/5 hover:bg-white/10 transition-all"
-                           >
-                              <Edit2 size={18} />
-                           </button>
-
-                           {/* Botão de Exclusão */}
-                           <button 
-                             onClick={(e) => { e.stopPropagation(); handleDelete(client.id, client.name); }}
-                             className="p-3 bg-white/5 text-gray-500 hover:text-red-600 rounded-2xl border border-white/5 hover:bg-white/10 transition-all"
-                           >
-                              <Trash2 size={18} />
-                           </button>
-                        </td>
-                    </tr>
-                  ))}
-               </tbody>
-            </table>
-         </div>
-      </div>
-
-      {/* MODAL CLIENTE VIP PREMIUM */}
-      {isModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center lg:justify-end animate-in fade-in duration-300">
-          <div className="absolute inset-0 bg-black/80 backdrop-blur-xl" onClick={() => setIsModalOpen(false)} />
+            <div>
+              <h1 className="text-3xl font-bold">Clientes</h1>
+              <p className="text-gray-500 text-sm">{activeCustomers} clientes ativos</p>
+            </div>
+          </div>
           
-          <div className="relative w-full h-full lg:w-[500px] bg-[#121021] border-l border-white/10 shadow-2xl flex flex-col slide-in-from-right duration-500">
-             
-             <div className="p-8 border-b border-white/5 text-white bg-black/20 flex items-center justify-between">
-                <div className="flex items-center gap-4">
-                   <div className="w-14 h-14 rounded-3xl bg-[#5E41FF]/10 flex items-center justify-center text-[#5E41FF] border border-[#5E41FF]/20 shadow-inner">
-                      <Users size={28} />
-                   </div>
-                   <div>
-                      <h2 className="text-xl font-black italic uppercase tracking-tighter">{editingClient ? 'Editar Cadastro' : 'Novo Cliente VIP'}</h2>
-                      <p className="text-[10px] text-gray-500 font-bold uppercase tracking-widest mt-1">Gerenciamento de Relacionamento</p>
-                   </div>
-                </div>
-                <button onClick={() => setIsModalOpen(false)} className="p-3 text-gray-500 hover:text-white rounded-full bg-white/5 transition-all"><X size={24} /></button>
-             </div>
+          <div className="flex items-center gap-3">
+            <button
+              onClick={() => setShowInactive(!showInactive)}
+              className={`p-3 rounded-xl transition-all ${
+                showInactive 
+                  ? 'bg-orange-500/20 text-orange-400' 
+                  : 'bg-[#1a1a2e] text-gray-400 hover:text-white'
+              }`}
+              title={showInactive ? 'Ocultar inativos' : 'Mostrar inativos'}
+            >
+              {showInactive ? <Eye size={20} /> : <EyeOff size={20} />}
+            </button>
+            
+            <button
+              onClick={() => { setEditingCustomer(null); setFormData({ name: '', whatsapp: '', phone: '', email: '', notes: '' }); setIsModalOpen(true); }}
+              className="flex items-center gap-2 px-6 py-3 bg-[#5E41FF] rounded-xl font-medium hover:brightness-110 transition-all"
+            >
+              <Plus size={20} />
+              Novo Cliente
+            </button>
+          </div>
+        </div>
+      </div>
 
-             <div className="flex-1 overflow-y-auto p-8 space-y-10 no-scrollbar text-white">
-                <form onSubmit={handleSaveClient} className="space-y-10">
-                  
-                  <div className="flex flex-col items-center justify-center py-6 bg-black/20 rounded-[2.5rem] border border-white/5 group relative overflow-hidden">
-                     <div className="absolute inset-0 bg-gradient-to-br from-[#5E41FF]/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity" />
-                     <div className="w-24 h-24 rounded-[2rem] bg-white/5 border-2 border-dashed border-white/10 flex items-center justify-center cursor-pointer hover:border-[#5E41FF]/40 transition-all relative z-10">
-                        <Camera size={32} className="text-gray-600 group-hover:text-[#5E41FF]" />
-                     </div>
-                     <p className="text-[10px] font-black uppercase tracking-widest text-gray-500 mt-4 relative z-10">Adicionar Avatar</p>
-                  </div>
+      {/* Mensagem */}
+      {message && (
+        <div className={`max-w-7xl mx-auto mb-4 p-4 rounded-xl ${message.type === 'success' ? 'bg-green-600/20 text-green-400 border border-green-600/30' : 'bg-red-600/20 text-red-400 border border-red-600/30'}`}>
+          {message.text}
+        </div>
+      )}
 
-                  <div className="space-y-8">
-                     <div className="space-y-3">
-                        <label className="text-[11px] font-black uppercase tracking-widest text-[#5E41FF]">Nome Completo</label>
-                        <input 
-                          required
-                          type="text" 
-                          value={formData.name}
-                          onChange={e => setFormData({...formData, name: e.target.value})}
-                          placeholder="Ex: Suanne Chagas"
-                          className="w-full bg-black/40 border border-white/5 rounded-2xl px-6 py-5 outline-none focus:border-[#5E41FF]/40 transition-all placeholder-gray-700 text-sm font-bold shadow-inner"
-                        />
-                     </div>
+      {/* Cards de resumo */}
+      <div className="max-w-7xl mx-auto grid grid-cols-1 md:grid-cols-3 gap-4 mb-8">
+        <div className="bg-[#121021] rounded-2xl p-6 border border-white/10">
+          <div className="flex items-center gap-3 mb-2">
+            <Users size={20} className="text-[#5E41FF]" />
+            <span className="text-gray-400 text-sm">Total de Clientes</span>
+          </div>
+          <p className="text-3xl font-bold">{totalCustomers}</p>
+        </div>
+        
+        <div className="bg-[#121021] rounded-2xl p-6 border border-white/10">
+          <div className="flex items-center gap-3 mb-2">
+            <ShieldCheck size={20} className="text-emerald-400" />
+            <span className="text-gray-400 text-sm">Clientes Ativos</span>
+          </div>
+          <p className="text-3xl font-bold text-emerald-400">{activeCustomers}</p>
+        </div>
+        
+        <div className="bg-[#121021] rounded-2xl p-6 border border-white/10">
+          <div className="flex items-center gap-3 mb-2">
+            <Users size={20} className="text-red-400" />
+            <span className="text-gray-400 text-sm">Clientes Inativos</span>
+          </div>
+          <p className="text-3xl font-bold text-red-400">{totalCustomers - activeCustomers}</p>
+        </div>
+      </div>
 
-                     <div className="space-y-3">
-                        <label className="text-[11px] font-black uppercase tracking-widest text-[#5E41FF]">WhatsApp / Telefone</label>
-                        <div className="relative">
-                           <input 
-                             required
-                             type="tel" 
-                             value={formData.whatsapp}
-                             onChange={e => setFormData({...formData, whatsapp: e.target.value})}
-                             placeholder="(11) 90000-0000"
-                             className="w-full bg-black/40 border border-white/5 rounded-2xl pl-14 pr-6 py-5 outline-none focus:border-[#5E41FF]/40 transition-all placeholder-gray-700 text-sm font-bold shadow-inner"
-                           />
-                           <MessageCircle className="absolute left-6 top-1/2 -translate-y-1/2 text-gray-600" size={18} />
+      {/* Busca */}
+      <div className="max-w-7xl mx-auto mb-6">
+        <div className="bg-[#121021] rounded-2xl p-4 border border-white/10">
+          <div className="relative">
+            <Search size={18} className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-500" />
+            <input
+              type="text"
+              placeholder="Buscar por nome, WhatsApp ou e-mail..."
+              value={search}
+              onChange={e => { setSearch(e.target.value); setCurrentPage(1); }}
+              className="w-full bg-black/40 border border-white/10 rounded-xl pl-12 pr-4 py-3 outline-none focus:border-[#5E41FF] transition-all"
+            />
+          </div>
+        </div>
+      </div>
+
+      {/* Tabela de clientes */}
+      <div className="max-w-7xl mx-auto bg-[#121021] rounded-2xl border border-white/10 overflow-hidden">
+        {loading ? (
+          <div className="p-8 text-center text-gray-500">
+            <Loader2 size={32} className="animate-spin mx-auto mb-4" />
+            Carregando clientes...
+          </div>
+        ) : paginatedCustomers.length === 0 ? (
+          <div className="p-8 text-center text-gray-500">
+            {search ? 'Nenhum cliente encontrado para esta busca' : 'Nenhum cliente cadastrado'}
+          </div>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full">
+              <thead>
+                <tr className="border-b border-white/10">
+                  <th className="text-left p-4 text-sm font-medium text-gray-400">Cliente</th>
+                  <th className="text-left p-4 text-sm font-medium text-gray-400">WhatsApp</th>
+                  <th className="text-left p-4 text-sm font-medium text-gray-400">E-mail</th>
+                  <th className="text-left p-4 text-sm font-medium text-gray-400">Cadastro</th>
+                  <th className="text-center p-4 text-sm font-medium text-gray-400">Status</th>
+                  <th className="text-right p-4 text-sm font-medium text-gray-400">Ações</th>
+                </tr>
+              </thead>
+              <tbody>
+                {paginatedCustomers.map((customer, index) => (
+                  <tr key={customer.id} className={`border-b border-white/5 ${index % 2 === 0 ? '' : 'bg-white/[0.02]'}`}>
+                    <td className="p-4">
+                      <div className="flex items-center gap-3">
+                        <div className="w-10 h-10 rounded-xl bg-[#5E41FF]/20 flex items-center justify-center">
+                          <User size={18} className="text-[#5E41FF]" />
                         </div>
-                     </div>
+                        <div>
+                          <p className="font-bold">{customer.name}</p>
+                          {customer.notes && (
+                            <p className="text-xs text-gray-500 truncate max-w-[200px]">{customer.notes}</p>
+                          )}
+                        </div>
+                      </div>
+                    </td>
+                    <td className="p-4">
+                      {customer.whatsapp ? (
+                        <a 
+                          href={`https://wa.me/55${customer.whatsapp.replace(/\D/g, '')}`}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="flex items-center gap-2 text-sm text-emerald-400 hover:text-emerald-300"
+                        >
+                          <MessageCircle size={16} />
+                          {customer.whatsapp}
+                        </a>
+                      ) : (
+                        <span className="text-gray-500 text-sm">-</span>
+                      )}
+                    </td>
+                    <td className="p-4">
+                      {customer.email ? (
+                        <a 
+                          href={`mailto:${customer.email}`}
+                          className="flex items-center gap-2 text-sm text-blue-400 hover:text-blue-300"
+                        >
+                          <Mail size={16} />
+                          {customer.email}
+                        </a>
+                      ) : (
+                        <span className="text-gray-500 text-sm">-</span>
+                      )}
+                    </td>
+                    <td className="p-4">
+                      <div className="flex items-center gap-2 text-sm text-gray-400">
+                        <Calendar size={14} />
+                        {format(parseISO(customer.created_at), 'dd/MM/yyyy')}
+                      </div>
+                    </td>
+                    <td className="p-4 text-center">
+                      {customer.active ? (
+                        <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-medium bg-emerald-500/20 text-emerald-400">
+                          <ShieldCheck size={14} />
+                          Ativo
+                        </span>
+                      ) : (
+                        <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-medium bg-red-500/20 text-red-400">
+                          <ShieldAlert size={14} />
+                          Inativo
+                        </span>
+                      )}
+                    </td>
+                    <td className="p-4 text-right">
+                      <div className="flex items-center justify-end gap-2">
+                        <button
+                          onClick={() => handleEdit(customer)}
+                          className="p-2 bg-blue-500/20 text-blue-400 rounded-lg hover:bg-blue-500/30 transition-all"
+                          title="Editar"
+                        >
+                          <Edit2 size={16} />
+                        </button>
+                        <button
+                          onClick={() => handleToggleActive(customer.id, customer.active)}
+                          className={`p-2 rounded-lg transition-all ${
+                            customer.active 
+                              ? 'bg-orange-500/20 text-orange-400 hover:bg-orange-500/30' 
+                              : 'bg-emerald-500/20 text-emerald-400 hover:bg-emerald-500/30'
+                          }`}
+                          title={customer.active ? 'Desativar' : 'Reativar'}
+                        >
+                          {customer.active ? <ShieldAlert size={16} /> : <ShieldCheck size={16} />}
+                        </button>
+                        <button
+                          onClick={() => handleDelete(customer.id)}
+                          className="p-2 bg-red-500/20 text-red-400 rounded-lg hover:bg-red-500/30 transition-all"
+                          title="Excluir"
+                        >
+                          <Trash2 size={16} />
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+        
+        {/* Paginação */}
+        {totalPages > 1 && (
+          <div className="flex items-center justify-between p-4 border-t border-white/10">
+            <p className="text-sm text-gray-400">
+              Mostrando {(currentPage - 1) * itemsPerPage + 1} a {Math.min(currentPage * itemsPerPage, totalCustomers)} de {totalCustomers}
+            </p>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
+                disabled={currentPage === 1}
+                className="p-2 bg-white/5 rounded-lg disabled:opacity-30 hover:bg-white/10 transition-all"
+              >
+                <ChevronLeft size={18} />
+              </button>
+              <span className="px-4 py-2 text-sm">
+                {currentPage} / {totalPages}
+              </span>
+              <button
+                onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
+                disabled={currentPage === totalPages}
+                className="p-2 bg-white/5 rounded-lg disabled:opacity-30 hover:bg-white/10 transition-all"
+              >
+                <ChevronRight size={18} />
+              </button>
+            </div>
+          </div>
+        )}
+      </div>
 
-                     <div className="space-y-3">
-                        <label className="text-[11px] font-black uppercase tracking-widest text-[#5E41FF]">Observações do Perfil</label>
-                        <textarea 
-                          rows={4}
-                          value={formData.notes}
-                          onChange={e => setFormData({...formData, notes: e.target.value})}
-                          placeholder="Preferências, alergias ou notas de estilo..."
-                          className="w-full bg-black/40 border border-white/5 rounded-2xl px-6 py-6 outline-none focus:border-[#5E41FF]/40 transition-all placeholder-gray-700 text-sm font-medium resize-none shadow-inner"
-                        />
-                     </div>
-                  </div>
-                </form>
-             </div>
-
-             <div className="p-8 bg-black/40 border-t border-white/5">
-                <button 
-                  onClick={handleSaveClient}
-                  disabled={saving || !formData.name || !formData.whatsapp}
-                  className="w-full py-6 bg-[#5E41FF] text-white rounded-3xl text-[11px] font-black uppercase tracking-widest shadow-2xl shadow-[#5E41FF]/40 hover:brightness-110 active:scale-95 disabled:opacity-50 disabled:grayscale transition-all flex items-center justify-center gap-4"
-                >
-                   {saving ? <Loader2 size={20} className="animate-spin" /> : <Save size={20} />}
-                   {editingClient ? 'Atualizar Perfil VIP' : 'Confirmar Cadastro VIP'}
-                </button>
-             </div>
+      {/* Modal */}
+      {isModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80" onClick={() => setIsModalOpen(false)}>
+          <div className="bg-[#121021] rounded-3xl w-full max-w-md p-8" onClick={e => e.stopPropagation()}>
+            <div className="flex items-center justify-between mb-6">
+              <h2 className="text-2xl font-bold">
+                {editingCustomer ? 'Editar Cliente' : 'Novo Cliente'}
+              </h2>
+              <button onClick={() => setIsModalOpen(false)} className="p-2 hover:bg-white/10 rounded-lg">
+                <X size={24} />
+              </button>
+            </div>
+            
+            <form onSubmit={handleSubmit} className="space-y-6">
+              {/* Nome */}
+              <div>
+                <label className="block text-sm font-medium text-gray-400 mb-2">Nome *</label>
+                <div className="relative">
+                  <User className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-500" size={20} />
+                  <input
+                    type="text"
+                    required
+                    value={formData.name}
+                    onChange={e => setFormData({...formData, name: e.target.value})}
+                    className="w-full bg-black/40 border border-white/10 rounded-xl pl-12 pr-4 py-4 outline-none focus:border-[#5E41FF] transition-all"
+                    placeholder="Nome completo"
+                  />
+                </div>
+              </div>
+              
+              {/* WhatsApp */}
+              <div>
+                <label className="block text-sm font-medium text-gray-400 mb-2">WhatsApp</label>
+                <div className="relative">
+                  <MessageCircle className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-500" size={20} />
+                  <input
+                    type="tel"
+                    value={formData.whatsapp}
+                    onChange={handlePhoneChange}
+                    className="w-full bg-black/40 border border-white/10 rounded-xl pl-12 pr-4 py-4 outline-none focus:border-[#5E41FF] transition-all"
+                    placeholder="(11) 99999-9999"
+                    maxLength={15}
+                  />
+                </div>
+              </div>
+              
+              {/* Telefone */}
+              <div>
+                <label className="block text-sm font-medium text-gray-400 mb-2">Telefone</label>
+                <div className="relative">
+                  <Phone className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-500" size={20} />
+                  <input
+                    type="tel"
+                    value={formData.phone}
+                    onChange={e => setFormData({...formData, phone: e.target.value})}
+                    className="w-full bg-black/40 border border-white/10 rounded-xl pl-12 pr-4 py-4 outline-none focus:border-[#5E41FF] transition-all"
+                    placeholder="(11) 3333-3333"
+                  />
+                </div>
+              </div>
+              
+              {/* E-mail */}
+              <div>
+                <label className="block text-sm font-medium text-gray-400 mb-2">E-mail</label>
+                <div className="relative">
+                  <Mail className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-500" size={20} />
+                  <input
+                    type="email"
+                    value={formData.email}
+                    onChange={e => setFormData({...formData, email: e.target.value})}
+                    className="w-full bg-black/40 border border-white/10 rounded-xl pl-12 pr-4 py-4 outline-none focus:border-[#5E41FF] transition-all"
+                    placeholder="email@exemplo.com"
+                  />
+                </div>
+              </div>
+              
+              {/* Observações */}
+              <div>
+                <label className="block text-sm font-medium text-gray-400 mb-2">Observações</label>
+                <textarea
+                  rows={3}
+                  value={formData.notes}
+                  onChange={e => setFormData({...formData, notes: e.target.value})}
+                  className="w-full bg-black/40 border border-white/10 rounded-xl px-4 py-4 outline-none focus:border-[#5E41FF] transition-all resize-none"
+                  placeholder="Preferências, alergias, notas..."
+                />
+              </div>
+              
+              {/* Botão */}
+              <button
+                type="submit"
+                disabled={saving || !formData.name}
+                className="w-full py-4 bg-[#5E41FF] text-white font-bold rounded-xl hover:brightness-110 transition-all flex items-center justify-center gap-2 disabled:opacity-50"
+              >
+                {saving ? <Loader2 size={20} className="animate-spin" /> : <Check size={20} />}
+                {saving ? 'Salvando...' : editingCustomer ? 'Atualizar Cliente' : 'Cadastrar Cliente'}
+              </button>
+            </form>
           </div>
         </div>
       )}
