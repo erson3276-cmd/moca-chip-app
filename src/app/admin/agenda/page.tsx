@@ -226,14 +226,22 @@ export default function AgendaPage() {
     setSaving(true)
     try {
       const selectedService = services.find(s => s.id === formData.serviceId)
-      const startIso = `${formData.date}T${formData.time}:00`
-      const endIso = addMinutes(parseISO(startIso), selectedService?.duration_minutes || 60).toISOString()
+      
+      // Criar data no formato correto com timezone de Brasília (-3h para UTC)
+      const [year, month, day] = formData.date.split('-').map(Number)
+      const [hour, minute] = formData.time.split(':').map(Number)
+      
+      // Criar data local e converter para UTC
+      const localDate = new Date(year, month - 1, day, hour, minute, 0)
+      const startUtc = new Date(localDate.getTime() - (3 * 60 * 60 * 1000)) // -3h para UTC
+      const endUtc = addMinutes(localDate, selectedService?.duration_minutes || 60)
+      const endTimeUtc = new Date(endUtc.getTime() - (3 * 60 * 60 * 1000))
       
       const res = await addAppointment({
         customer_id: formData.customerId,
         service_id: formData.serviceId,
-        start_time: startIso,
-        end_time: endIso,
+        start_time: startUtc.toISOString(),
+        end_time: endTimeUtc.toISOString(),
         status: 'agendado'
       })
       
