@@ -126,56 +126,51 @@ export default function ServicosPage() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
+    
+    if (!formData.name || formData.name.trim() === '') {
+      showMessage('error', 'Nome é obrigatório')
+      return
+    }
+    
+    if (!formData.price || Number(formData.price) <= 0) {
+      showMessage('error', 'Preço é obrigatório')
+      return
+    }
+    
     setSaving(true)
 
     try {
-      if (editingService) {
-        const response = await fetch('/api/services', {
-          method: 'PUT',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            id: editingService.id,
-            name: formData.name,
-            price: Number(formData.price),
-            duration_minutes: formData.duration_minutes,
-            description: formData.description || null,
-            category: formData.category || null
-          })
-        })
-        
-        if (!response.ok) {
-          const data = await response.json()
-          throw new Error(data.error || 'Erro ao atualizar')
-        }
-        
-        showMessage('success', 'Serviço atualizado com sucesso!')
-      } else {
-        const response = await fetch('/api/services', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            name: formData.name,
-            price: Number(formData.price),
-            duration_minutes: formData.duration_minutes,
-            description: formData.description || null,
-            category: formData.category || null
-          })
-        })
-        
-        if (!response.ok) {
-          const data = await response.json()
-          throw new Error(data.error || 'Erro ao criar')
-        }
-        
-        showMessage('success', 'Serviço criado com sucesso!')
+      const payload: any = {
+        name: formData.name.trim(),
+        price: Number(formData.price),
+        duration_minutes: formData.duration_minutes || 60,
+        description: formData.description || null,
+        category: formData.category || null
       }
       
+      if (editingService) {
+        payload.id = editingService.id
+      }
+      
+      const response = await fetch('/api/services', {
+        method: editingService ? 'PUT' : 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      })
+      
+      const data = await response.json()
+      
+      if (!response.ok) {
+        throw new Error(data.error || 'Erro ao salvar')
+      }
+      
+      showMessage('success', editingService ? 'Serviço atualizado!' : 'Serviço criado!')
       setIsModalOpen(false)
       setEditingService(null)
       setFormData({ name: '', price: '', duration_minutes: 60, description: '', category: '' })
       fetchServices()
     } catch (error: any) {
-      showMessage('error', error.message)
+      showMessage('error', error.message || 'Erro ao salvar serviço')
     }
 
     setSaving(false)
