@@ -35,6 +35,15 @@ export async function POST(request: Request) {
       return Response.json({ error: 'Campos obrigatórios faltando' }, { status: 400 })
     }
     
+    // Verificar se o horário já passou (Brasília = UTC-3)
+    const nowBrasilia = new Date()
+    nowBrasilia.setHours(nowBrasilia.getHours() - 3) // Converter para UTC
+    const appointmentTime = new Date(start_time)
+    
+    if (appointmentTime <= nowBrasilia) {
+      return Response.json({ error: 'Não é possível agendar em horários que já passaram' }, { status: 400 })
+    }
+    
     // Verificar conflito de horário
     const { data: conflicts } = await supabase
       .from('appointments')
