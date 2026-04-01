@@ -45,6 +45,7 @@ import {
   startOfDay,
   endOfDay
 } from 'date-fns'
+import { formatInTimeZone, toZonedTime } from 'date-fns-tz'
 import { ptBR } from 'date-fns/locale'
 
 export default function AgendaPage() {
@@ -107,24 +108,18 @@ export default function AgendaPage() {
   // Fuso horário de Brasília (UTC-3)
   const TIMEZONE = 'America/Sao_Paulo'
 
-  // Converter UTC para Brasília e obter hora
-  const getBrasiliaHour = (dateStr: string) => {
-    const d = parseISO(dateStr)
-    const formatter = new Intl.DateTimeFormat('en-US', {
-      timeZone: TIMEZONE,
-      hour: '2-digit',
-      hour12: false,
-      minute: '2-digit'
-    })
-    const parts = formatter.formatToParts(d)
-    const hour = parseInt(parts.find(p => p.type === 'hour')?.value || '0')
-    const minute = parseInt(parts.find(p => p.type === 'minute')?.value || '0')
-    return { hour, minute }
-  }
-
   // Formatar data para Brasília
   const formatBrasilia = (dateStr: string, formatStr: string) => {
-    return format(parseISO(dateStr), formatStr, { timeZone: TIMEZONE })
+    return formatInTimeZone(parseISO(dateStr), TIMEZONE, formatStr)
+  }
+
+  // Obter hora em Brasília
+  const getBrasiliaHour = (dateStr: string) => {
+    const zonedDate = toZonedTime(parseISO(dateStr), TIMEZONE)
+    return {
+      hour: zonedDate.getHours(),
+      minute: zonedDate.getMinutes()
+    }
   }
 
   // Lógica de Renderização de Cartões (Top e Height) - usando hora de Brasília
@@ -141,7 +136,7 @@ export default function AgendaPage() {
   // Filtrar agendamentos do dia (usando Brasília)
   const isSameDayBrasilia = (dateStr: string, day: Date) => {
     const aptDateStr = formatBrasilia(dateStr, 'yyyy-MM-dd')
-    const dayStr = format(day, 'yyyy-MM-dd', { timeZone: TIMEZONE })
+    const dayStr = formatInTimeZone(day, TIMEZONE, 'yyyy-MM-dd')
     return aptDateStr === dayStr
   }
 
