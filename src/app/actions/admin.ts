@@ -68,49 +68,58 @@ export async function getAppointments() {
 }
 
 export async function addAppointment(appointmentData: any) {
-  // 1. Verificar conflito de horário primeiro
-  const startTime = appointmentData.start_time
-  const endTime = appointmentData.end_time
-  const serviceId = appointmentData.service_id
-  
-  try {
-    // Tentar usar a função RPC do Supabase para verificar conflito
-    const { data: conflictData, error: conflictError } = await supabase
-      .rpc('check_appointment_conflict', {
-        p_start_time: startTime,
-        p_end_time: endTime,
-        p_service_id: serviceId,
-        p_exclude_id: null
-      })
-    
-    if (!conflictError && conflictData?.[0]?.has_conflict) {
-      const conflict = conflictData[0].conflicting_appointment
-      const conflictTime = new Date(conflict.start_time).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })
-      throw new Error(`Horário conflita com agendamento de ${conflict.customer_name} às ${conflictTime}`)
-    }
-  } catch (rpcErr: any) {
-    // Se a função RPC não existir ainda, continuamos com a inserção direta
-    if (!rpcErr.message?.includes('does not exist')) {
-      console.warn('RPC check_appointment_conflict não disponível:', rpcErr.message)
-    }
+  // 1. Validar horário (só permitir :00 ou :30)
+  const startDate = new Date(appointmentData.start_time)
+  const minutes = startDate.getUTCMinutes()
+  if (minutes !== 0 && minutes !== 30) {
+    throw new Error('Agendamentos só podem ser feitos em horários cheios (00) ou meia hora (30)')
   }
 
-  // 2. Inserir o agendamento (fallback se RPC não existir)
-  const tables = ['agendamentos', 'appointments']
-  for (const table of tables) {
-    const { data, error } = await supabase
-      .from(table)
-      .insert([appointmentData])
-      .select()
-    
-    if (!error) {
-      await revalidateAdmin()
-      revalidatePath('/admin/agenda')
-      revalidatePath('/')
-      return { ...data[0], table }
-    }
+  // 2. Não permitir agendamento em horários passados (Brasília = UTC-3)
+  const nowBrasilia = new Date()
+  nowBrasilia.setHours(nowBrasilia.getHours() - 3) // Converter para UTC
+  const appointmentTime = new Date(appointmentData.start_time)
+  if (appointmentTime <= nowBrasilia) {
+    throw new Error('Não é possível agendar em horários que já passaram')
   }
-  throw new Error('Falha ao criar agendamento. Horário pode estar ocupado.')
+
+  // 3. Verificar conflito de horário no banco
+  const startTime = appointmentData.start_time
+  const endTime = appointmentData.end_time
+  
+  // Buscar agendamentos que conflitam (mesmo horário)
+  const { data: conflicts, error: conflictError } = await supabase
+    .from('appointments')
+    .select('id, start_time, end_time, customers!inner(name)')
+    .neq('status', 'cancelado')
+    .or(`and(start_time.lte.${startTime},end_time.gt.${startTime}),and(start_time.lt.${endTime},end_time.gte.${endTime}),and(start_time.gte.${startTime},start_time.lt.${endTime})`)
+
+  if (conflictError) {
+    console.error('Erro ao verificar conflito:', conflictError)
+  }
+
+  if (conflicts && conflicts.length > 0) {
+    const conflict = conflicts[0]
+    const conflictTime = new Date(conflict.start_time).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })
+    const customerName = conflict.customers?.name || 'Cliente'
+    throw new Error(`Horário já reservado para ${customerName} às ${conflictTime}`)
+  }
+
+  // 4. Inserir o agendamento
+  const { data, error } = await supabase
+    .from('appointments')
+    .insert([appointmentData])
+    .select()
+  
+  if (error) {
+    console.error('Erro ao criar agendamento:', error)
+    throw new Error('Falha ao criar agendamento')
+  }
+
+  await revalidateAdmin()
+  revalidatePath('/admin/agenda')
+  revalidatePath('/')
+  return data[0]
 }
 
 export async function updateAppointmentStatus(id: string, status: string) {
