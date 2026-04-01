@@ -101,7 +101,7 @@ export async function addAppointment(appointmentData: any) {
   if (conflicts && conflicts.length > 0) {
     const conflict = conflicts[0]
     const conflictTime = new Date(conflict.start_time).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })
-    const customerName = conflict.customers?.name || 'Cliente'
+    const customerName = conflict.customers?.[0]?.name || 'Cliente'
     throw new Error(`Horário já reservado para ${customerName} às ${conflictTime}`)
   }
 
