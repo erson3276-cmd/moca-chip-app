@@ -1,0 +1,53 @@
+import { createClient } from '@supabase/supabase-js'
+
+const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || ''
+const supabaseKey = process.env.SUPABASE_SERVICE_KEY || ''
+
+const supabase = createClient(supabaseUrl, supabaseKey)
+
+export async function GET() {
+  try {
+    const { data, error } = await supabase
+      .from('vendas')
+      .select(`
+        *,
+        customers:customer_id(id, name),
+        services:service_id(id, name)
+      `)
+      .order('created_at', { ascending: false })
+    
+    if (error) throw error
+    
+    return Response.json({ data: data || [], success: true })
+  } catch (error: any) {
+    console.error('Erro ao buscar vendas:', error)
+    return Response.json({ error: error.message || 'Erro interno' }, { status: 500 })
+  }
+}
+
+export async function POST(request: Request) {
+  try {
+    const body = await request.json()
+    const { customer_id, service_id, appointment_id, amount, payment_method, date } = body
+    
+    const { data, error } = await supabase
+      .from('vendas')
+      .insert([{ 
+        customer_id, 
+        service_id, 
+        appointment_id, 
+        amount: amount || 0, 
+        payment_method,
+        date: date || new Date().toISOString() 
+      }])
+      .select()
+      .single()
+    
+    if (error) throw error
+    
+    return Response.json({ data, success: true })
+  } catch (error: any) {
+    console.error('Erro ao criar venda:', error)
+    return Response.json({ error: error.message || 'Erro interno' }, { status: 500 })
+  }
+}

@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useCallback } from 'react'
 import { 
   Calendar as CalendarIcon, 
   ChevronLeft, 
@@ -8,570 +8,653 @@ import {
   Plus, 
   Clock, 
   User,
-  CheckCircle2,
   X,
   Save,
   Loader2,
   Scissors,
-  MoreVertical,
-  QrCode,
   CreditCard,
-  Banknote,
   DollarSign,
-  Trash2,
   Check,
-  RefreshCw,
-  Zap,
-  Phone
+  Trash2
 } from 'lucide-react'
-import { 
-  addAppointment, 
-  getAppointments, 
-  getCustomers, 
-  getServices, 
-  completeAppointmentCheckout,
-  updateAppointmentStatus,
-  deleteAppointment
-} from '@/app/actions/admin'
 import { 
   format, 
   addDays, 
   startOfWeek, 
   eachDayOfInterval, 
-  isSameDay, 
   parseISO, 
   addMinutes,
-  isToday,
-  startOfDay,
-  endOfDay
+  isToday
 } from 'date-fns'
-import { formatInTimeZone, toZonedTime } from 'date-fns-tz'
+import { formatInTimeZone } from 'date-fns-tz'
 import { ptBR } from 'date-fns/locale'
 
+// Tipos
+interface Service {
+  id: string
+  name: string
+  price: number
+  duration_minutes: number
+}
+
+interface Customer {
+  id: string
+  name: string
+  whatsapp?: string
+}
+
+interface Appointment {
+  id: string
+  customer_id: string
+  service_id: string
+  start_time: string
+  end_time: string
+  status: 'agendado' | 'confirmado' | 'finalizado' | 'cancelado' | 'falta'
+  customers?: Customer
+  services?: Service
+}
+
+interface FormData {
+  customerId: string
+  serviceId: string
+  date: string
+  time: string
+}
+
+// Config
+const TIMEZONE = 'America/Sao_Paulo'
+
+// Funções utilitárias
+const toBrasilia = (dateStr: string) => {
+  const date = new Date(dateStr)
+  return new Date(date.toLocaleString('en-US', { timeZone: TIMEZONE }))
+}
+
+const formatTimeBrasilia = (dateStr: string) => {
+  const date = toBrasilia(dateStr)
+  return format(date, 'HH:mm')
+}
+
+const formatDateBrasilia = (dateStr: string) => {
+  const date = toBrasilia(dateStr)
+  return format(date, 'yyyy-MM-dd')
+}
+
 export default function AgendaPage() {
-  const [appointments, setAppointments] = useState<any[]>([])
-  const [currentDate, setCurrentDate] = useState(new Date())
+  // States
+  const [appointments, setAppointments] = useState<Appointment[]>([])
+  const [customers, setCustomers] = useState<Customer[]>([])
+  const [services, setServices] = useState<Service[]>([])
   const [loading, setLoading] = useState(true)
+  const [saving, setSaving] = useState(false)
+  
+  const [currentDate, setCurrentDate] = useState(new Date())
   const [view, setView] = useState<'dia' | 'semana'>('semana')
   
-  // Modais
   const [isModalOpen, setIsModalOpen] = useState(false)
   const [isCheckoutOpen, setIsCheckoutOpen] = useState(false)
+  const [selectedApt, setSelectedApt] = useState<Appointment | null>(null)
   
-  const [saving, setSaving] = useState(false)
-  const [customers, setCustomers] = useState<any[]>([])
-  const [services, setServices] = useState<any[]>([])
-  const [selectedApt, setSelectedApt] = useState<any>(null)
-
-  const [formData, setFormData] = useState({
+  const [formData, setFormData] = useState<FormData>({
     customerId: '',
     serviceId: '',
     date: format(new Date(), 'yyyy-MM-dd'),
     time: '10:00'
   })
+  
+  const [paymentMethod, setPaymentMethod] = useState('Pix')
+  const [message, setMessage] = useState<{type: 'success' | 'error', text: string} | null>(null)
 
-  const [checkoutData, setCheckoutData] = useState({
-    paymentMethod: 'Pix'
-  })
-
-  // Configuração da Grade Premium
+  // Configuração da grade
   const start = startOfWeek(currentDate, { weekStartsOn: 1 })
   const end = addDays(start, 6)
   const days = eachDayOfInterval({ start, end })
   const hours = Array.from({ length: 24 * 2 }, (_, i) => ({
-    h: Math.floor(i / 2), // Das 00h às 23h
+    h: Math.floor(i / 2),
     m: i % 2 === 0 ? '00' : '30'
   }))
 
-  async function fetchData() {
+  // API Calls
+  const fetchData = useCallback(async () => {
     setLoading(true)
     try {
-      const [apts, custs, servs] = await Promise.all([
-        getAppointments(),
-        getCustomers(),
-        getServices()
+      const [aptsRes, custsRes, servsRes] = await Promise.all([
+        fetch('/api/appointments'),
+        fetch('/api/customers'),
+        fetch('/api/services')
       ])
-      // Filter out invalid dates or parse properly
-      setAppointments(apts || [])
-      setCustomers(custs || [])
-      setServices(servs || [])
-    } catch(e) {
-      console.error("Fetch error:", e)
+      
+      const aptsData = await aptsRes.json()
+      const custsData = await custsRes.json()
+      const servsData = await servsRes.json()
+      
+      setAppointments(aptsData.data || [])
+      setCustomers(custsData.data || [])
+      setServices(servsData.data || [])
+    } catch (error) {
+      console.error('Erro ao carregar dados:', error)
+      showMessage('error', 'Erro ao carregar dados')
     }
     setLoading(false)
-  }
+  }, [])
 
   useEffect(() => {
     fetchData()
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [currentDate])
+  }, [fetchData])
 
-  // Fuso horário de Brasília (UTC-3)
-  const TIMEZONE = 'America/Sao_Paulo'
-
-  // Formatar data para Brasília
-  const formatBrasilia = (dateStr: string, formatStr: string) => {
-    return formatInTimeZone(parseISO(dateStr), TIMEZONE, formatStr)
+  // Mostrar mensagem
+  const showMessage = (type: 'success' | 'error', text: string) => {
+    setMessage({ type, text })
+    setTimeout(() => setMessage(null), 3000)
   }
 
-  // Obter hora em Brasília
-  const getBrasiliaHour = (dateStr: string) => {
-    const zonedDate = toZonedTime(parseISO(dateStr), TIMEZONE)
-    return {
-      hour: zonedDate.getHours(),
-      minute: zonedDate.getMinutes()
-    }
-  }
-
-  // Lógica de Renderização de Cartões (Top e Height) - usando hora de Brasília
-  const getCardPosition = (startTimeStr: string, duration: number) => {
-    const { hour, minute } = getBrasiliaHour(startTimeStr)
-    const hourStart = 0
-    const minutesFromStartOfDay = (hour - hourStart) * 60 + minute
-    
-    const top = (minutesFromStartOfDay / 30) * 64
-    const height = (duration / 30) * 64
-    return { top: `${top}px`, height: `${Math.max(height - 2, 20)}px` }
-  }
-
-  // Filtrar agendamentos do dia (usando Brasília)
-  const isSameDayBrasilia = (dateStr: string, day: Date) => {
-    const aptDateStr = formatBrasilia(dateStr, 'yyyy-MM-dd')
+  // Filtrar agendamentos do dia (Brasília)
+  const getAppointmentsForDay = (day: Date) => {
     const dayStr = formatInTimeZone(day, TIMEZONE, 'yyyy-MM-dd')
-    return aptDateStr === dayStr
+    return appointments.filter(apt => {
+      const aptDate = formatInTimeZone(parseISO(apt.start_time), TIMEZONE, 'yyyy-MM-dd')
+      return aptDate === dayStr && apt.status !== 'cancelado'
+    })
   }
 
-  // Nova lógica de detecção de sobreposição - agrupa agendamentos que conflitam
-  const getDailyAppointments = (day: Date) => {
-    const dayApts = appointments.filter(apt => isSameDayBrasilia(apt.start_time, day))
-    
-    // Ordenar por horário de início
-    dayApts.sort((a, b) => parseISO(a.start_time).getTime() - parseISO(b.start_time).getTime())
-    
-    // Calcular end_time para cada agendamento baseado na duração do serviço
-    const aptsWithEnd = dayApts.map(apt => {
-      const duration = apt.services?.duration_minutes || 60
-      const startMs = parseISO(apt.start_time).getTime()
-      const endMs = apt.end_time ? parseISO(apt.end_time).getTime() : startMs + (duration * 60 * 1000)
-      return { ...apt, aptStart: startMs, aptEnd: endMs, duration }
-    })
+  // Calcular posição do card
+  const getCardPosition = (startTimeStr: string, duration: number) => {
+    const hour = toBrasilia(startTimeStr).getHours()
+    const minute = toBrasilia(startTimeStr).getMinutes()
+    const minutesFromStart = hour * 60 + minute
+    const top = (minutesFromStart / 30) * 64
+    const height = (duration / 30) * 64
+    return { top: `${top}px`, height: `${Math.max(height - 4, 40)}px` }
+  }
 
-    // Agrupar agendamentos em "tracks" (faixas) para evitar sobreposição
-    const tracks: any[] = []
-    const results: any[] = []
-
-    aptsWithEnd.forEach(apt => {
-      // Encontrar uma track onde este agendamento cabe (não conflita)
-      let placedInTrack = -1
+  // Agrupar por conflito (mesmos horários)
+  const groupByConflict = (apts: Appointment[]) => {
+    if (apts.length === 0) return []
+    
+    const sorted = [...apts].sort((a, b) => 
+      new Date(a.start_time).getTime() - new Date(b.start_time).getTime()
+    )
+    
+    const groups: Appointment[][] = []
+    const assigned = new Set<string>()
+    
+    sorted.forEach(apt => {
+      if (assigned.has(apt.id)) return
       
-      for (let i = 0; i < tracks.length; i++) {
-        const trackEnd = tracks[i]
-        // Se o início deste apt é >= ao fim da última track, cabe nela
-        if (apt.aptStart >= trackEnd) {
-          placedInTrack = i
-          break
+      const group = [apt]
+      assigned.add(apt.id)
+      
+      sorted.forEach(other => {
+        if (assigned.has(other.id)) return
+        
+        const aptStart = new Date(apt.start_time).getTime()
+        const aptEnd = new Date(apt.end_time).getTime()
+        const otherStart = new Date(other.start_time).getTime()
+        const otherEnd = new Date(other.end_time).getTime()
+        
+        if (otherStart < aptEnd && otherEnd > aptStart) {
+          group.push(other)
+          assigned.add(other.id)
         }
-      }
-
-      if (placedInTrack === -1) {
-        // Criar nova track
-        tracks.push(apt.aptEnd)
-        placedInTrack = tracks.length - 1
-      } else {
-        // Atualizar fim da track existente
-        tracks[placedInTrack] = Math.max(tracks[placedInTrack], apt.aptEnd)
-      }
-
-      results.push({ ...apt, trackIndex: placedInTrack, totalTracks: tracks.length })
-    })
-
-    return results
-  }
-
-  const handleCancelApt = async (id: string) => {
-    if (!confirm('Deseja realmente cancelar este agendamento?')) return
-    try {
-      await updateAppointmentStatus(id, 'cancelado')
-      await fetchData()
-    } catch(e) { alert("Erro ao cancelar") }
-  }
-
-  const handleDeleteApt = async (id: string) => {
-    if (!confirm('Deseja EXCLUIR permanentemente este registro?')) return
-    try {
-      await deleteAppointment(id)
-      await fetchData()
-    } catch(e) { alert("Erro ao excluir") }
-  }
-
-  const handleCheckout = async () => {
-    if (!selectedApt) return
-    setSaving(true)
-    try {
-      await completeAppointmentCheckout(selectedApt.id, {
-        customer_id: selectedApt.customer_id,
-        service_id: selectedApt.service_id,
-        amount: selectedApt.services?.price || 0,
-        payment_method: checkoutData.paymentMethod,
-        date: new Date().toISOString()
       })
-      setIsCheckoutOpen(false)
-      setSelectedApt(null)
-      await fetchData()
-    } catch(e) { alert("Erro no checkout") }
+      
+      groups.push(group)
+    })
+    
+    return groups
+  }
+
+  // Criar agendamento
+  const handleCreateAppointment = async (e: React.FormEvent) => {
+    e.preventDefault()
+    setSaving(true)
+    
+    try {
+      const service = services.find(s => s.id === formData.serviceId)
+      if (!service) throw new Error('Selecione um serviço')
+      
+      const startDateTime = new Date(`${formData.date}T${formData.time}:00`)
+      const endDateTime = addMinutes(startDateTime, service.duration_minutes)
+      
+      const response = await fetch('/api/appointments', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          customer_id: formData.customerId,
+          service_id: formData.serviceId,
+          start_time: startDateTime.toISOString(),
+          end_time: endDateTime.toISOString(),
+          status: 'agendado'
+        })
+      })
+      
+      const data = await response.json()
+      
+      if (!response.ok) {
+        throw new Error(data.error || 'Erro ao criar agendamento')
+      }
+      
+      showMessage('success', 'Agendamento criado com sucesso!')
+      setIsModalOpen(false)
+      setFormData({
+        customerId: '',
+        serviceId: '',
+        date: format(new Date(), 'yyyy-MM-dd'),
+        time: '10:00'
+      })
+      fetchData()
+    } catch (error: any) {
+      showMessage('error', error.message)
+    }
+    
     setSaving(false)
   }
 
-  const handleSaveAppointment = async (e: React.FormEvent) => {
-    e.preventDefault()
-    setSaving(true)
+  // Cancelar agendamento
+  const handleCancel = async (id: string) => {
+    if (!confirm('Cancelar este agendamento?')) return
+    
     try {
-      const selectedService = services.find(s => s.id === formData.serviceId)
-      
-      // Criar data no formato correto com timezone de Brasília (-3h para UTC)
-      const [year, month, day] = formData.date.split('-').map(Number)
-      const [hour, minute] = formData.time.split(':').map(Number)
-      
-      // Criar data local e converter para UTC
-      const localDate = new Date(year, month - 1, day, hour, minute, 0)
-      const startUtc = new Date(localDate.getTime() - (3 * 60 * 60 * 1000)) // -3h para UTC
-      const endUtc = addMinutes(localDate, selectedService?.duration_minutes || 60)
-      const endTimeUtc = new Date(endUtc.getTime() - (3 * 60 * 60 * 1000))
-      
-      const res = await addAppointment({
-        customer_id: formData.customerId,
-        service_id: formData.serviceId,
-        start_time: startUtc.toISOString(),
-        end_time: endTimeUtc.toISOString(),
-        status: 'agendado'
+      const response = await fetch(`/api/appointments/${id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status: 'cancelado' })
       })
       
-      if (res.error) throw new Error(res.error)
+      if (!response.ok) throw new Error('Erro ao cancelar')
       
-      setIsModalOpen(false)
-      await fetchData()
-    } catch(e: any) { alert("Erro: " + e.message) }
+      showMessage('success', 'Agendamento cancelado')
+      fetchData()
+    } catch (error) {
+      showMessage('error', 'Erro ao cancelar agendamento')
+    }
+  }
+
+  // Excluir agendamento
+  const handleDelete = async (id: string) => {
+    if (!confirm('Excluir permanentemente?')) return
+    
+    try {
+      const response = await fetch(`/api/appointments/${id}`, {
+        method: 'DELETE'
+      })
+      
+      if (!response.ok) throw new Error('Erro ao excluir')
+      
+      showMessage('success', 'Agendamento excluído')
+      fetchData()
+    } catch (error) {
+      showMessage('error', 'Erro ao excluir')
+    }
+  }
+
+  // Finalizar (checkout)
+  const handleCheckout = async () => {
+    if (!selectedApt) return
+    setSaving(true)
+    
+    try {
+      // Criar venda
+      await fetch('/api/vendas', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          customer_id: selectedApt.customer_id,
+          service_id: selectedApt.service_id,
+          appointment_id: selectedApt.id,
+          amount: selectedApt.services?.price || 0,
+          payment_method: paymentMethod,
+          date: new Date().toISOString()
+        })
+      })
+      
+      // Atualizar status
+      await fetch(`/api/appointments/${selectedApt.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status: 'finalizado' })
+      })
+      
+      showMessage('success', 'Atendimento finalizado!')
+      setIsCheckoutOpen(false)
+      setSelectedApt(null)
+      fetchData()
+    } catch (error) {
+      showMessage('error', 'Erro ao finalizar')
+    }
+    
     setSaving(false)
   }
 
   return (
-    <div className="max-w-[1600px] mx-auto space-y-8 animate-in fade-in duration-1000 pb-20">
+    <div className="min-h-screen bg-[#0A0A0A] text-white p-6">
       
-      {/* Premium Agenda Header */}
-      <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-6 bg-[#121021] p-8 rounded-[3rem] border border-white/5 shadow-2xl relative overflow-hidden group">
-         <div className="absolute inset-0 bg-gradient-to-tr from-[#5E41FF]/10 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-700" />
-         
-         <div className="flex items-center gap-6 relative z-10">
-            <div className="w-16 h-16 rounded-[2rem] bg-[#5E41FF] flex items-center justify-center shadow-2xl shadow-[#5E41FF]/40 border border-white/10 ring-4 ring-[#5E41FF]/10">
-               <CalendarIcon size={32} className="text-white" />
+      {/* Header */}
+      <div className="max-w-7xl mx-auto mb-8">
+        <div className="flex items-center justify-between flex-wrap gap-4">
+          <div className="flex items-center gap-4">
+            <div className="w-14 h-14 rounded-2xl bg-[#5E41FF] flex items-center justify-center">
+              <CalendarIcon size={28} className="text-white" />
             </div>
             <div>
-               <h1 className="text-4xl font-black italic uppercase tracking-tighter text-white">Agenda Executiva</h1>
-               <div className="flex items-center gap-3 mt-1.5">
-                  <span className="px-3 py-1 rounded-full bg-emerald-500/10 text-emerald-500 text-[10px] font-black uppercase tracking-widest border border-emerald-500/20">Sincronizado</span>
-                  <div className="w-1 h-1 rounded-full bg-white/20" />
-                  <p className="text-sm font-bold text-gray-500 italic">{format(currentDate, "MMMM 'de' yyyy", { locale: ptBR })}</p>
-               </div>
+              <h1 className="text-3xl font-bold">Agenda</h1>
+              <p className="text-gray-500 text-sm">{format(currentDate, 'MMMM yyyy', { locale: ptBR })}</p>
             </div>
-         </div>
-
-         <div className="flex flex-wrap items-center gap-4 relative z-10">
-            <div className="flex items-center bg-black/40 p-1.5 rounded-2xl border border-white/5 mr-4">
-               <button onClick={() => setView('dia')} className={`px-6 py-2.5 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${view === 'dia' ? 'bg-[#5E41FF] text-white shadow-lg' : 'text-gray-500 hover:text-white'}`}>Dia</button>
-               <button onClick={() => setView('semana')} className={`px-6 py-2.5 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${view === 'semana' ? 'bg-[#5E41FF] text-white shadow-lg' : 'text-gray-500 hover:text-white'}`}>Semana</button>
+          </div>
+          
+          <div className="flex items-center gap-3">
+            {/* View Toggle */}
+            <div className="flex bg-[#1a1a2e] rounded-xl p-1">
+              <button
+                onClick={() => setView('dia')}
+                className={`px-4 py-2 rounded-lg text-sm font-medium transition-all ${view === 'dia' ? 'bg-[#5E41FF] text-white' : 'text-gray-400 hover:text-white'}`}
+              >
+                Dia
+              </button>
+              <button
+                onClick={() => setView('semana')}
+                className={`px-4 py-2 rounded-lg text-sm font-medium transition-all ${view === 'semana' ? 'bg-[#5E41FF] text-white' : 'text-gray-400 hover:text-white'}`}
+              >
+                Semana
+              </button>
             </div>
             
-            <div className="flex items-center gap-2">
-               <button onClick={() => setCurrentDate(addDays(currentDate, -1))} className="p-4 bg-white/5 text-white rounded-2xl hover:bg-white/10 border border-white/5 transition-all"><ChevronLeft size={20} /></button>
-               <button onClick={() => setCurrentDate(new Date())} className="px-6 py-4 bg-white/5 text-[10px] font-black uppercase tracking-widest text-white rounded-2xl border border-white/5 hover:bg-white/10 transition-all">Hoje</button>
-               <button onClick={() => setCurrentDate(addDays(currentDate, 1))} className="p-4 bg-white/5 text-white rounded-2xl hover:bg-white/10 border border-white/5 transition-all"><ChevronRight size={20} /></button>
-            </div>
-            
-            <button 
-              onClick={() => setIsModalOpen(true)}
-              className="flex items-center gap-3 px-8 py-4 bg-[#5E41FF] text-white rounded-3xl text-[11px] font-black uppercase tracking-widest shadow-2xl shadow-[#5E41FF]/30 hover:scale-[1.02] active:scale-95 transition-all outline-none"
-            >
-              <Plus size={20} /> Novo Atendimento
+            {/* Navegação */}
+            <button onClick={() => setCurrentDate(addDays(currentDate, -1))} className="p-3 bg-[#1a1a2e] rounded-xl hover:bg-[#2a2a4e] transition-all">
+              <ChevronLeft size={20} />
             </button>
-         </div>
-      </div>
-
-      {/* Main Agenda Grid */}
-      <div className="bg-[#121021] border border-white/5 rounded-[3.5rem] shadow-2xl overflow-hidden relative">
-         
-          {/* Days Header */}
-          <div className="grid grid-cols-[100px_1fr] border-b border-white/5 bg-black/20">
-             <div className="h-20 border-r border-white/5 flex items-center justify-center">
-                <Clock size={20} className="text-gray-600" />
-             </div>
-             <div className={`grid ${view === 'dia' ? 'grid-cols-1' : 'grid-cols-1 md:grid-cols-7'}`}>
-                {(view === 'semana' ? days : [currentDate]).map(day => (
-                 <div key={day.toString()} className={`py-6 flex flex-col items-center justify-center border-r border-white/5 relative ${isToday(day) ? 'bg-[#5E41FF]/5' : ''}`}>
-                    <span className="text-[10px] font-black uppercase tracking-[0.2em] text-gray-500 mb-1">{format(day, 'EEE', { locale: ptBR })}</span>
-                    <span className={`text-2xl font-black italic tracking-tighter ${isToday(day) ? 'text-[#5E41FF]' : 'text-white'}`}>{format(day, 'dd')}</span>
-                    {isToday(day) && <div className="absolute bottom-2 w-1 h-1 rounded-full bg-[#5E41FF]" />}
-                 </div>
-               ))}
-            </div>
-         </div>
-
-          {/* Time Grid with Scroll */}
-          <div className="h-[1500px] overflow-y-auto no-scrollbar relative select-none bg-[url('https://www.transparenttextures.com/patterns/dark-matter.png')]">
+            <button onClick={() => setCurrentDate(new Date())} className="px-4 py-2 bg-[#1a1a2e] rounded-xl text-sm hover:bg-[#2a2a4e] transition-all">
+              Hoje
+            </button>
+            <button onClick={() => setCurrentDate(addDays(currentDate, 1))} className="p-3 bg-[#1a1a2e] rounded-xl hover:bg-[#2a2a4e] transition-all">
+              <ChevronRight size={20} />
+            </button>
             
-            <div className="grid grid-cols-[100px_1fr] relative">
-               
-               {/* Time Column */}
-               <div className="relative z-20 bg-[#121021]/80 backdrop-blur-sm border-r border-white/5">
-                  {hours.map(h => (
-                    <div key={`${h.h}:${h.m}`} className="h-[64px] flex items-start justify-center pt-2">
-                       <span className={`text-[11px] font-bold tracking-tight ${h.m === '00' ? 'text-gray-400' : 'text-gray-700'}`}>{h.h}:{h.m}</span>
-                    </div>
-                  ))}
-               </div>
-
-               {/* Appointments Cells */}
-               <div className={`grid ${view === 'dia' ? 'grid-cols-1' : 'grid-cols-1 md:grid-cols-7'} relative`}>
-                  
-                  {/* Grid Lines Overlay */}
-                  <div className="absolute inset-0 pointer-events-none">
-                     {hours.map(h => (
-                        <div key={`line-${h.h}:${h.m}`} className={`h-[64px] border-b border-white/${h.m === '00' ? '5' : '1'}`} />
-                     ))}
-                  </div>
-
-                   {(view === 'semana' ? days : [currentDate]).map((day, dIdx) => (
-                     <div key={`col-${dIdx}`} className="relative group/col border-r border-white/[0.03]">
-                        {getDailyAppointments(day).map(apt => {
-                           const style = getCardPosition(apt.start_time, apt.duration || 60)
-                           const isCancelled = apt.status === 'cancelado'
-                           const isFinished = apt.status === 'finalizado'
-                           
-                           // Calcular largura e posição baseados nas tracks
-                           const width = apt.totalTracks > 1 ? (100 / apt.totalTracks) : 100
-                           const left = apt.trackIndex * width
-
-                            return (
-                              <div 
-                                key={apt.id}
-                                style={{ ...style, width: `${width}%`, left: `${left}%` }}
-                                className={`absolute p-1 z-30 transition-all duration-300 ${isCancelled ? 'opacity-40 grayscale' : ''}`}
-                              >
-                                <div className={`h-full w-full rounded-2xl border p-3 flex flex-col justify-between overflow-hidden shadow-xl min-h-[80px]
-                                   ${isFinished ? 'bg-emerald-500/20 border-emerald-500/30 text-emerald-100 shadow-emerald-500/10' : 
-                                     isCancelled ? 'bg-gray-800/20 border-gray-700 text-gray-500' : 
-                                     'bg-[#5E41FF]/20 border-[#5E41FF]/30 text-white shadow-[#5E41FF]/10'}
-                                `}>
-                                   
-                                   {/* Card Header */}
-                                   <div className="space-y-1">
-                                      <div className="flex items-center justify-between">
-                                         <span className="text-[10px] font-bold flex items-center gap-1">
-                                            <Clock size={12} /> {formatBrasilia(apt.start_time, 'HH:mm')}
-                                         </span>
-                                         {isFinished && <CheckCircle2 size={14} className="text-emerald-500" />}
-                                      </div>
-                                      <h4 className="text-[12px] font-bold truncate">{apt.services?.name || 'Serviço'}</h4>
-                                      <div className="flex items-center gap-1.5">
-                                         <User size={12} className="opacity-70" />
-                                         <span className="text-[11px] truncate opacity-80">{apt.customers?.name || 'Cliente'}</span>
-                                      </div>
-                                   </div>
-
-                                   {/* Card Actions - SEMPRE VISÍVEIS */}
-                                   {!isFinished && !isCancelled && (
-                                     <div className="flex items-center gap-1.5 mt-3 pt-3 border-t border-white/10">
-                                        <button 
-                                          onClick={() => { setSelectedApt(apt); setIsCheckoutOpen(true); }}
-                                          className="flex-1 h-8 bg-emerald-500 text-white rounded-lg text-[10px] font-bold hover:bg-emerald-400 transition-all flex items-center justify-center gap-1"
-                                        >
-                                           Finalizar
-                                        </button>
-                                        <button 
-                                          onClick={() => handleCancelApt(apt.id)}
-                                          className="w-8 h-8 bg-orange-500 text-white rounded-lg flex items-center justify-center hover:bg-orange-400 transition-all"
-                                          title="Cancelar"
-                                        >
-                                           <X size={14} />
-                                        </button>
-                                        <button 
-                                          onClick={() => handleDeleteApt(apt.id)}
-                                          className="w-8 h-8 bg-red-600 text-white rounded-lg flex items-center justify-center hover:bg-red-500 transition-all"
-                                          title="Excluir"
-                                        >
-                                           <Trash2 size={14} />
-                                        </button>
-                                     </div>
-                                   )}
-                                </div>
-                              </div>
-                            )
-                       })}
-                    </div>
-                  ))}
-               </div>
-            </div>
-         </div>
+            {/* Novo */}
+            <button
+              onClick={() => setIsModalOpen(true)}
+              className="flex items-center gap-2 px-6 py-3 bg-[#5E41FF] rounded-xl font-medium hover:brightness-110 transition-all"
+            >
+              <Plus size={20} />
+              Novo
+            </button>
+          </div>
+        </div>
       </div>
 
-      {/* MODAL: NOVO AGENDAMENTO PREMIUM */}
-      {isModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center lg:justify-end animate-in fade-in duration-300">
-           <div className="absolute inset-0 bg-black/80 backdrop-blur-xl" onClick={() => setIsModalOpen(false)} />
-           
-           <div className="relative w-full h-full lg:w-[500px] bg-[#121021] border-l border-white/10 shadow-2xl flex flex-col slide-in-from-right duration-500">
-              
-              <div className="p-8 border-b border-white/5 text-white bg-black/20 flex items-center justify-between">
-                 <div className="flex items-center gap-6">
-                    <div className="w-14 h-14 rounded-[1.5rem] bg-[#5E41FF]/10 flex items-center justify-center text-[#5E41FF] border border-[#5E41FF]/20 shadow-inner">
-                       <Zap size={28} />
-                    </div>
-                    <div>
-                       <h2 className="text-2xl font-black italic uppercase tracking-tighter">Entrada Agendada</h2>
-                       <p className="text-[10px] text-gray-500 font-bold uppercase tracking-widest mt-1">Gestão de Agenda VIP</p>
-                    </div>
-                 </div>
-                 <button onClick={() => setIsModalOpen(false)} className="p-3 text-gray-500 hover:text-white rounded-full bg-white/5 transition-all"><X size={24} /></button>
-              </div>
-
-              <div className="flex-1 overflow-y-auto p-10 space-y-12 no-scrollbar text-white">
-                 <form onSubmit={handleSaveAppointment} className="space-y-10">
-                    
-                    <div className="space-y-4">
-                       <label className="text-[11px] font-black uppercase tracking-widest text-[#5E41FF]">Identificação da Cliente</label>
-                       <div className="relative group">
-                          <select 
-                            required
-                            value={formData.customerId}
-                            onChange={e => setFormData({...formData, customerId: e.target.value})}
-                            className="w-full bg-black/40 text-white border border-white/5 rounded-3xl px-8 py-6 outline-none focus:border-[#5E41FF]/40 transition-all text-sm font-bold appearance-none cursor-pointer shadow-inner"
-                          >
-                             <option value="">Selecione sua Cliente VIP...</option>
-                             {customers.map(c => (
-                               <option key={c.id} value={c.id} className="bg-[#121021]">{c.name} {c.whatsapp ? `(${c.whatsapp})` : ''}</option>
-                             ))}
-                          </select>
-                          <User className="absolute right-8 top-1/2 -translate-y-1/2 text-gray-600 group-hover:text-[#5E41FF] transition-colors pointer-events-none" size={20} />
-                       </div>
-                    </div>
-
-                    <div className="space-y-4">
-                       <label className="text-[11px] font-black uppercase tracking-widest text-[#5E41FF]">Seleção de Serviço</label>
-                       <div className="relative group">
-                          <select 
-                            required
-                            value={formData.serviceId}
-                            onChange={e => setFormData({...formData, serviceId: e.target.value})}
-                            className="w-full bg-black/40 text-white border border-white/5 rounded-3xl px-8 py-6 outline-none focus:border-[#5E41FF]/40 transition-all text-sm font-bold appearance-none cursor-pointer shadow-inner"
-                          >
-                             <option value="">Escolha o Procedimento...</option>
-                             {services.map(s => (
-                               <option key={s.id} value={s.id} className="bg-[#121021]">{s.name} - R$ {s.price?.toLocaleString()} ({s.duration_minutes}m)</option>
-                             ))}
-                          </select>
-                          <Scissors className="absolute right-8 top-1/2 -translate-y-1/2 text-gray-600 group-hover:text-[#5E41FF] transition-colors pointer-events-none" size={20} />
-                       </div>
-                    </div>
-
-                    <div className="grid grid-cols-2 gap-8">
-                       <div className="space-y-4">
-                          <label className="text-[11px] font-black uppercase tracking-widest text-emerald-500">Data Master</label>
-                          <input 
-                            required
-                            type="date"
-                            value={formData.date}
-                            onChange={e => setFormData({...formData, date: e.target.value})}
-                            className="w-full bg-black/40 border border-white/5 rounded-3xl px-8 py-6 outline-none focus:border-[#5E41FF]/40 transition-all text-sm font-bold shadow-inner color-scheme-dark"
-                          />
-                       </div>
-                       <div className="space-y-4">
-                          <label className="text-[11px] font-black uppercase tracking-widest text-orange-500">Horário Nobre</label>
-                          <input 
-                            required
-                            type="time"
-                            value={formData.time}
-                            onChange={e => setFormData({...formData, time: e.target.value})}
-                            className="w-full bg-black/40 border border-white/5 rounded-3xl px-8 py-6 outline-none focus:border-[#5E41FF]/40 transition-all text-sm font-bold shadow-inner color-scheme-dark"
-                          />
-                       </div>
-                    </div>
-                 </form>
-              </div>
-
-              <div className="p-10 bg-black/40 border-t border-white/5">
-                 <button 
-                   onClick={handleSaveAppointment}
-                   disabled={saving || !formData.customerId || !formData.serviceId}
-                   className="w-full py-7 bg-[#5E41FF] text-white rounded-[2rem] text-[12px] font-black uppercase tracking-[0.2em] shadow-[0_20px_50px_-20px_rgba(94,65,255,0.8)] hover:brightness-110 active:scale-95 disabled:opacity-50 disabled:grayscale transition-all flex items-center justify-center gap-4"
-                 >
-                    {saving ? <Loader2 size={24} className="animate-spin" /> : <Save size={24} />}
-                    Confirmar Reserva Executiva
-                 </button>
-              </div>
-           </div>
+      {/* Mensagem */}
+      {message && (
+        <div className={`max-w-7xl mx-auto mb-4 p-4 rounded-xl ${message.type === 'success' ? 'bg-green-600/20 text-green-400 border border-green-600/30' : 'bg-red-600/20 text-red-400 border border-red-600/30'}`}>
+          {message.text}
         </div>
       )}
 
-      {/* MODAL: CHECKOUT PREMIUM */}
-      {isCheckoutOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center lg:justify-end animate-in fade-in duration-300">
-           <div className="absolute inset-0 bg-black/80 backdrop-blur-xl" onClick={() => setIsCheckoutOpen(false)} />
-           
-           <div className="relative w-full h-full lg:w-[500px] bg-[#121021] border-l border-white/10 shadow-2xl flex flex-col slide-in-from-right duration-500">
+      {/* Agenda */}
+      <div className="max-w-7xl mx-auto bg-[#121021] rounded-3xl overflow-hidden">
+        
+        {/* Header dos dias */}
+        <div className="grid grid-cols-[80px_repeat(7,1fr)] border-b border-white/10">
+          <div className="p-4 flex items-center justify-center border-r border-white/10">
+            <Clock size={20} className="text-gray-500" />
+          </div>
+          {(view === 'semana' ? days : [currentDate]).map((day, i) => (
+            <div key={i} className={`p-4 text-center border-r border-white/10 ${isToday(day) ? 'bg-[#5E41FF]/10' : ''}`}>
+              <p className="text-xs text-gray-500 uppercase">{format(day, 'EEE', { locale: ptBR })}</p>
+              <p className={`text-2xl font-bold mt-1 ${isToday(day) ? 'text-[#5E41FF]' : ''}`}>{format(day, 'dd')}</p>
+            </div>
+          ))}
+        </div>
+
+        {/* Grade de horários */}
+        <div className="overflow-y-auto" style={{ maxHeight: 'calc(100vh - 300px)' }}>
+          <div className="grid grid-cols-[80px_repeat(7,1fr)] relative">
+            
+            {/* Coluna de horários */}
+            <div className="border-r border-white/10">
+              {hours.map((h, i) => (
+                <div key={i} className="h-16 flex items-start justify-center pt-2 border-b border-white/5">
+                  <span className={`text-xs ${h.m === '00' ? 'text-gray-400 font-medium' : 'text-gray-600'}`}>
+                    {h.h.toString().padStart(2, '0')}:{h.m}
+                  </span>
+                </div>
+              ))}
+            </div>
+
+            {/* Colunas dos dias */}
+            {(view === 'semana' ? days : [currentDate]).map((day, dayIdx) => {
+              const dayAppointments = getAppointmentsForDay(day)
+              const groups = groupByConflict(dayAppointments)
               
-              <div className="p-10 border-b border-white/5 text-white bg-black/20 flex flex-col gap-2">
-                 <div className="flex items-center justify-between">
-                    <h2 className="text-3xl font-black italic uppercase tracking-tighter">Finalizar Venda</h2>
-                    <button onClick={() => setIsCheckoutOpen(false)} className="p-3 text-gray-500 hover:text-white rounded-full bg-white/5 transition-all"><X size={24} /></button>
-                 </div>
-                 <p className="text-[10px] text-[#5E41FF] font-black uppercase tracking-[0.2em] mt-2">Emissão de Comprovante & Venda Digital</p>
-              </div>
+              return (
+                <div key={dayIdx} className="relative border-r border-white/10">
+                  {/* Linhas de grade */}
+                  {hours.map((h, i) => (
+                    <div key={i} className={`h-16 border-b border-white/5 ${h.m === '00' ? 'border-white/10' : ''}`} />
+                  ))}
+                  
+                  {/* Agendamentos */}
+                  {groups.map((group, groupIdx) => (
+                    group.map((apt, aptIdx) => {
+                      const style = getCardPosition(apt.start_time, apt.services?.duration_minutes || 60)
+                      const width = 100 / group.length
+                      const left = aptIdx * width
+                      const isFinalizado = apt.status === 'finalizado'
+                      
+                      return (
+                        <div
+                          key={apt.id}
+                          style={{
+                            ...style,
+                            width: `${width}%`,
+                            left: `${left}%`,
+                            top: style.top
+                          }}
+                          className={`absolute p-2 z-10 ${isFinalizado ? 'opacity-60' : ''}`}
+                        >
+                          <div className={`h-full rounded-xl p-3 border ${
+                            isFinalizado 
+                              ? 'bg-emerald-600/20 border-emerald-600/40' 
+                              : 'bg-[#5E41FF]/20 border-[#5E41FF]/40'
+                          }`}>
+                            <div className="flex items-center gap-1 text-xs text-gray-400 mb-1">
+                              <Clock size={12} />
+                              {formatTimeBrasilia(apt.start_time)}
+                              {isFinalizado && <Check size={12} className="text-emerald-400 ml-auto" />}
+                            </div>
+                            <p className="font-bold text-sm truncate">{apt.services?.name || 'Serviço'}</p>
+                            <div className="flex items-center gap-1 text-xs text-gray-400 mt-1">
+                              <User size={12} />
+                              <span className="truncate">{apt.customers?.name || 'Cliente'}</span>
+                            </div>
+                            
+                            {/* Botões de ação */}
+                            {!isFinalizado && (
+                              <div className="flex gap-1 mt-2 pt-2 border-t border-white/10">
+                                <button
+                                  onClick={() => { setSelectedApt(apt); setIsCheckoutOpen(true); }}
+                                  className="flex-1 py-1.5 bg-emerald-500 text-white text-xs font-bold rounded-lg hover:bg-emerald-400 transition-all"
+                                >
+                                  Finalizar
+                                </button>
+                                <button
+                                  onClick={() => handleCancel(apt.id)}
+                                  className="px-2 py-1.5 bg-orange-500/20 text-orange-400 text-xs rounded-lg hover:bg-orange-500/30 transition-all"
+                                  title="Cancelar"
+                                >
+                                  <X size={14} />
+                                </button>
+                                <button
+                                  onClick={() => handleDelete(apt.id)}
+                                  className="px-2 py-1.5 bg-red-500/20 text-red-400 text-xs rounded-lg hover:bg-red-500/30 transition-all"
+                                  title="Excluir"
+                                >
+                                  <Trash2 size={14} />
+                                </button>
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      )
+                    })
+                  ))}
+                </div>
+              )
+            })}
+          </div>
+        </div>
+      </div>
 
-              <div className="flex-1 overflow-y-auto p-12 space-y-12 no-scrollbar text-white">
-                 <div className="bg-black/40 p-8 rounded-[2.5rem] border border-white/5 shadow-inner">
-                    <p className="text-[10px] font-black uppercase tracking-widest text-gray-600 mb-2">Total a Receber</p>
-                    <div className="flex items-center justify-between">
-                       <span className="text-4xl font-black italic tracking-tighter text-emerald-400">
-                          {selectedApt?.services?.price?.toLocaleString('pt-BR', { minimumFractionDigits: 2, style: 'currency', currency: 'BRL' })}
-                       </span>
-                       <div className="w-14 h-14 rounded-2xl bg-emerald-500/10 flex items-center justify-center text-emerald-500 border border-emerald-500/20">
-                          <DollarSign size={28} />
-                       </div>
-                    </div>
-                 </div>
-
-                 <div className="space-y-6">
-                    <label className="text-[11px] font-black uppercase tracking-widest text-[#5E41FF]">Forma de Pagamento</label>
-                    <div className="grid grid-cols-2 gap-4">
-                       {[
-                         { id: 'Pix', icon: <QrCode size={18}/> },
-                         { id: 'Crédito', icon: <CreditCard size={18}/> },
-                         { id: 'Débito', icon: <Banknote size={18}/> },
-                         { id: 'Dinheiro', icon: <DollarSign size={18}/> }
-                       ].map(method => (
-                         <button 
-                           key={method.id}
-                           onClick={() => setCheckoutData({...checkoutData, paymentMethod: method.id})}
-                           className={`p-6 rounded-3xl border transition-all flex flex-col items-center gap-3 ${checkoutData.paymentMethod === method.id ? 'bg-[#5E41FF] border-[#5E41FF] text-white shadow-xl shadow-[#5E41FF]/30' : 'bg-black/20 border-white/5 text-gray-500 hover:border-white/20'}`}
-                         >
-                            {method.icon}
-                            <span className="text-[10px] font-black uppercase tracking-widest">{method.id}</span>
-                         </button>
-                       ))}
-                    </div>
-                 </div>
+      {/* Modal Novo Agendamento */}
+      {isModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80" onClick={() => setIsModalOpen(false)}>
+          <div className="bg-[#121021] rounded-3xl w-full max-w-md p-8" onClick={e => e.stopPropagation()}>
+            <div className="flex items-center justify-between mb-6">
+              <h2 className="text-2xl font-bold">Novo Agendamento</h2>
+              <button onClick={() => setIsModalOpen(false)} className="p-2 hover:bg-white/10 rounded-lg">
+                <X size={24} />
+              </button>
+            </div>
+            
+            <form onSubmit={handleCreateAppointment} className="space-y-6">
+              {/* Cliente */}
+              <div>
+                <label className="block text-sm font-medium text-gray-400 mb-2">Cliente</label>
+                <div className="relative">
+                  <User className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-500" size={20} />
+                  <select
+                    required
+                    value={formData.customerId}
+                    onChange={e => setFormData({...formData, customerId: e.target.value})}
+                    className="w-full bg-black/40 border border-white/10 rounded-xl pl-12 pr-4 py-4 outline-none focus:border-[#5E41FF] transition-all"
+                  >
+                    <option value="">Selecione o cliente</option>
+                    {customers.map(c => (
+                      <option key={c.id} value={c.id}>{c.name}</option>
+                    ))}
+                  </select>
+                </div>
               </div>
-
-              <div className="p-12 bg-black/40 border-t border-white/5">
-                 <button 
-                   onClick={handleCheckout}
-                   disabled={saving}
-                   className="w-full py-7 bg-emerald-500 text-black rounded-[2rem] text-[12px] font-black uppercase tracking-[0.2em] shadow-[0_20px_50px_-20px_rgba(16,185,129,0.8)] hover:brightness-110 active:scale-95 transition-all flex items-center justify-center gap-4"
-                 >
-                    {saving ? <Loader2 size={24} className="animate-spin" /> : <CheckCircle2 size={24} />}
-                    Marcar como Pago & Finalizar
-                 </button>
+              
+              {/* Serviço */}
+              <div>
+                <label className="block text-sm font-medium text-gray-400 mb-2">Serviço</label>
+                <div className="relative">
+                  <Scissors className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-500" size={20} />
+                  <select
+                    required
+                    value={formData.serviceId}
+                    onChange={e => setFormData({...formData, serviceId: e.target.value})}
+                    className="w-full bg-black/40 border border-white/10 rounded-xl pl-12 pr-4 py-4 outline-none focus:border-[#5E41FF] transition-all"
+                  >
+                    <option value="">Selecione o serviço</option>
+                    {services.map(s => (
+                      <option key={s.id} value={s.id}>
+                        {s.name} - R$ {s.price.toFixed(2)} ({s.duration_minutes}min)
+                      </option>
+                    ))}
+                  </select>
+                </div>
               </div>
-           </div>
+              
+              {/* Data e Hora */}
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-400 mb-2">Data</label>
+                  <input
+                    type="date"
+                    required
+                    value={formData.date}
+                    onChange={e => setFormData({...formData, date: e.target.value})}
+                    className="w-full bg-black/40 border border-white/10 rounded-xl px-4 py-4 outline-none focus:border-[#5E41FF] transition-all"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-400 mb-2">Hora</label>
+                  <select
+                    required
+                    value={formData.time}
+                    onChange={e => setFormData({...formData, time: e.target.value})}
+                    className="w-full bg-black/40 border border-white/10 rounded-xl px-4 py-4 outline-none focus:border-[#5E41FF] transition-all"
+                  >
+                    {Array.from({ length: 48 }, (_, i) => {
+                      const h = Math.floor(i / 2)
+                      const m = i % 2 === 0 ? '00' : '30'
+                      return (
+                        <option key={i} value={`${h.toString().padStart(2, '0')}:${m}`}>
+                          {h.toString().padStart(2, '0')}:{m}
+                        </option>
+                      )
+                    })}
+                  </select>
+                </div>
+              </div>
+              
+              {/* Botão */}
+              <button
+                type="submit"
+                disabled={saving}
+                className="w-full py-4 bg-[#5E41FF] text-white font-bold rounded-xl hover:brightness-110 transition-all flex items-center justify-center gap-2 disabled:opacity-50"
+              >
+                {saving ? <Loader2 size={20} className="animate-spin" /> : <Save size={20} />}
+                {saving ? 'Salvando...' : 'Confirmar Agendamento'}
+              </button>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Modal Checkout */}
+      {isCheckoutOpen && selectedApt && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80" onClick={() => setIsCheckoutOpen(false)}>
+          <div className="bg-[#121021] rounded-3xl w-full max-w-md p-8" onClick={e => e.stopPropagation()}>
+            <div className="flex items-center justify-between mb-6">
+              <h2 className="text-2xl font-bold">Finalizar Atendimento</h2>
+              <button onClick={() => setIsCheckoutOpen(false)} className="p-2 hover:bg-white/10 rounded-lg">
+                <X size={24} />
+              </button>
+            </div>
+            
+            {/* Total */}
+            <div className="bg-black/40 rounded-2xl p-6 mb-6">
+              <p className="text-sm text-gray-400 mb-2">Total a Receber</p>
+              <p className="text-4xl font-bold text-emerald-400">
+                R$ {selectedApt.services?.price?.toFixed(2) || '0,00'}
+              </p>
+            </div>
+            
+            {/* Forma de pagamento */}
+            <div className="mb-6">
+              <label className="block text-sm font-medium text-gray-400 mb-3">Forma de Pagamento</label>
+              <div className="grid grid-cols-2 gap-3">
+                {['Pix', 'Crédito', 'Débito', 'Dinheiro'].map(method => (
+                  <button
+                    key={method}
+                    onClick={() => setPaymentMethod(method)}
+                    className={`p-4 rounded-xl border transition-all ${
+                      paymentMethod === method 
+                        ? 'bg-[#5E41FF] border-[#5E41FF]' 
+                        : 'border-white/10 hover:border-white/30'
+                    }`}
+                  >
+                    {method === 'Pix' && <DollarSign size={20} className="mx-auto mb-1" />}
+                    {method === 'Crédito' && <CreditCard size={20} className="mx-auto mb-1" />}
+                    {method !== 'Pix' && method !== 'Crédito' && <DollarSign size={20} className="mx-auto mb-1" />}
+                    <span className="text-sm font-medium">{method}</span>
+                  </button>
+                ))}
+              </div>
+            </div>
+            
+            {/* Botão */}
+            <button
+              onClick={handleCheckout}
+              disabled={saving}
+              className="w-full py-4 bg-emerald-500 text-black font-bold rounded-xl hover:brightness-110 transition-all flex items-center justify-center gap-2 disabled:opacity-50"
+            >
+              {saving ? <Loader2 size={20} className="animate-spin" /> : <Check size={20} />}
+              {saving ? 'Processando...' : 'Confirmar Pagamento'}
+            </button>
+          </div>
         </div>
       )}
     </div>
