@@ -387,58 +387,57 @@ export async function sendManagerTalkMessage(phone: string, text: string) {
 
 export async function testEvolutionConnection() {
   try {
-    const api_url = process.env.EVOLUTION_API_URL?.replace(/\/$/, '') // Remove barra final se houver
+    const api_url = process.env.EVOLUTION_API_URL?.replace(/\/$/, '')
     const instance = process.env.EVOLUTION_INSTANCE
     const apikey = process.env.EVOLUTION_API_KEY || ''
 
     if (!api_url || !instance) {
-       return { success: false, error: 'Variáveis de ambiente EVOLUTION_API_URL ou EVOLUTION_INSTANCE não configuradas.' }
+       return { status: 'error', error: 'Configuração ausente' }
     }
 
+    // 1. Verificar Estado Atual
     const url = `${api_url}/instance/connectionState/${instance}`
-    
-    // Adicionado AbortController para evitar que o fetch trave a UI
-    const controller = new AbortController()
-    const id = setTimeout(() => controller.abort(), 8000)
-
     const response = await fetch(url, {
       method: 'GET',
       headers: { 'apikey': apikey },
-      cache: 'no-store',
-      signal: controller.signal
+      cache: 'no-store'
     })
     
-    clearTimeout(id)
     let data = await response.json()
-    
-    // Se estiver desconectado, forçar pedido de conexão para gerar QR Code
-    if (data.instance?.state === 'close' || data.status === 404) {
-       console.log('Instância desconectada. Solicitando novo QR Code...')
+    console.log(`[EVOLUTION] Estado atual da instância ${instance}:`, data.instance?.state || data.status)
+
+    // 2. Se não estiver aberto, tentar conectar/gerar QR
+    if (data.instance?.state !== 'open') {
        const connectUrl = `${api_url}/instance/connect/${instance}`
        const connectRes = await fetch(connectUrl, {
           method: 'GET',
-          headers: { 'apikey': apikey }
+          headers: { 'apikey': apikey },
+          cache: 'no-store'
        })
-       data = await connectRes.json()
+       const connectData = await connectRes.json()
+       
+       // Mesclar dados de conexão
+       data = { ...data, ...connectData }
     }
 
-    // Se estiver em estado transitional 'connecting', esperar um pouco e tentar pegar o QR
-    if (data.instance?.state === 'connecting') {
-       await new Promise(resolve => setTimeout(resolve, 3000))
-       const r2 = await fetch(url, { headers: { 'apikey': apikey } })
-       data = await r2.json()
-    }
+    // 3. Extrair QR ou Pairing Code de múltiplas propriedades possíveis
+    const qrcode = 
+      data.qrcode?.base64 || 
+      (typeof data.qrcode === 'string' && data.qrcode.startsWith('data:image') ? data.qrcode : null) ||
+      (data.base64) || 
+      (typeof data.code === 'string' && data.code.startsWith('data:image') ? data.code : null)
 
-    const qrcode = data.qrcode?.base64 || (typeof data.qrcode === 'string' && data.qrcode.startsWith('data:image') ? data.qrcode : null) || (typeof data.code === 'string' && data.code.startsWith('data:image') ? data.code : null)
-    const pairingCode = data.pairingCode || (typeof data.code === 'string' && !data.code.startsWith('data:image') ? data.code : null)
+    const pairingCode = 
+      data.pairingCode || 
+      (data.code && typeof data.code === 'string' && data.code.length === 8 ? data.code : null)
 
     return {
       status: data.instance?.state || data.status || 'disconnected',
       qrcode: qrcode,
       pairingCode: pairingCode
     }
-  } catch (error) {
-    console.error('Erro ao testar Evolution:', error)
+  } catch (error: any) {
+    console.error('Erro ao conectar Evolution API:', error.message)
     return { status: 'error', qrcode: null, pairingCode: null }
   }
 }
@@ -499,10 +498,16 @@ export async function addCustomer(customerData: any) {
     customerData.whatsapp = customerData.whatsapp.replace(/\D/g, '')
   }
   
+  // Forçar desbloqueado por padrão para novos clientes
+  const cleanData = {
+    ...customerData,
+    is_blocked: false
+  }
+  
   for (const table of tables) {
     const { data, error } = await supabase
       .from(table)
-      .insert([customerData])
+      .insert([cleanData])
       .select()
     
     if (!error) {
@@ -553,30 +558,41 @@ export async function adminLogout() {
 }
 
 export async function uploadProfileImage(formData: FormData) {
-  const file = formData.get('file') as File
-  if (!file) throw new Error('Nenhum arquivo enviado')
+  try {
+    const file = formData.get('file') as File
+    if (!file) throw new Error('Nenhum arquivo enviado')
 
-  const fileExt = file.name.split('.').pop()
-  const fileName = `profile-${Math.random()}.${fileExt}`
-  const filePath = `public/${fileName}`
+    const fileExt = file.name.split('.').pop()
+    // Nome limpo para evitar erros de caracteres no storage
+    const fileName = `profile-${Date.now()}-${Math.floor(Math.random() * 1000)}.${fileExt}`
+    const filePath = `${fileName}` // Removido 'public/' para evitar problemas de permissão em subpastas
 
-  // 1. Upload para o Supabase Storage com Bypass de Erros
-  const { data, error } = await supabase.storage
-    .from('salon-assets')
-    .upload(filePath, file)
+    console.log(`[STORAGE] Tentando upload para bucket salon-assets: ${filePath}`)
 
-  if (error) {
-     // Log no console da Vercel para debug
-     console.error("ERRO UPLOAD STORAGE:", error.message)
-     throw new Error('Erro ao subir imagem para o Storage: ' + error.message + '. Verifique se o bucket "salon-assets" é público/existe.')
+    // 1. Upload para o Supabase Storage
+    const { data, error } = await supabase.storage
+      .from('salon-assets')
+      .upload(filePath, file, {
+        cacheControl: '3600',
+        upsert: true
+      })
+
+    if (error) {
+       console.error("ERRO DETALHADO UPLOAD STORAGE:", error)
+       throw new Error(`Erro no Supabase Storage: ${error.message}. Verifique se o bucket "salon-assets" existe e é público.`)
+    }
+
+    // 2. Pegar URL Pública
+    const { data: { publicUrl } } = supabase.storage
+      .from('salon-assets')
+      .getPublicUrl(filePath)
+
+    console.log(`[STORAGE] Upload sucesso! URL: ${publicUrl}`)
+    return { publicUrl }
+  } catch (err: any) {
+    console.error("[UPLOAD ACTION ERROR]:", err.message)
+    throw err
   }
-
-  // 2. Pegar URL Pública
-  const { data: { publicUrl } } = supabase.storage
-    .from('salon-assets')
-    .getPublicUrl(filePath)
-
-  return { publicUrl }
 }
 
 export async function updateProfile(profileData: any) {
@@ -621,8 +637,15 @@ export async function validateVIP(whatsapp: string) {
       .select('id, name, is_blocked')
       .eq('whatsapp', cleanWhatsapp)
       .maybeSingle()
+    
     if (error || !data) continue
-    if (data.is_blocked) return { status: 'blocked', message: 'Indisponível no momento' }
+    
+    // Só bloqueia se for explicitamente TRUE. Se for null ou false, deixa passar.
+    if (data.is_blocked === true) {
+      console.log(`[VIP] Cliente ${cleanWhatsapp} está BLOQUEADO.`)
+      return { status: 'blocked', message: 'Seu acesso aos agendamentos online está restrito. Fale com o salão.' }
+    }
+    
     return { status: 'ok', client: data }
   }
   return { status: 'not_found' }

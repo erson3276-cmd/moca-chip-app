@@ -34,18 +34,20 @@ export default function ManagerTalkPage() {
 
   const loadTemplate = async (key: string) => {
     try {
-      const { getProfile } = await import('@/app/actions/admin')
+      const { getProfile, processTemplate } = await import('@/app/actions/admin')
       const profile = await getProfile()
       
-      const templatesList: any = {
-        confirmacao: `[ ${profile?.name || 'Salão'} ]\n\nAgendamento confirmado!\n\nOlá, Seu agendamento foi confirmado.`,
-        remarcado: `[ ${profile?.name || 'Salão'} ]\n\nSeu agendamento foi remarcado 🗓️`,
-        cancelado: `[ ${profile?.name || 'Salão'} ]\n\nAgendamento cancelado 🗓️ ⛔`,
-        lembrete_dia: `[ ${profile?.name || 'Salão'} ]\n\nChegou o dia do seu agendamento!😃`,
-        falta: `[ ${profile?.name || 'Salão'} ]\n\nOh não! Você perdeu o horário do seu agendamento conosco 🙁`
+      // Mock data for template processing in a manual chat context
+      const mockData = {
+        profile,
+        startTimeStr: '[Data/Hora]',
+        service: { name: '[Serviço]', duration_minutes: 60 },
+        dateStr: '[Data]',
+        timeStr: '[Hora]'
       }
 
-      setMessage(templatesList[key] || "Olá!")
+      const processedMsg = await processTemplate(key as any, mockData)
+      setMessage(processedMsg)
     } catch (err) {
       console.error("Erro ao carregar template:", err)
     }

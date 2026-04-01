@@ -12,10 +12,11 @@ import {
   Download,
   AlertCircle,
   CheckCircle2,
-  PieChart
+  PieChart,
+  FileSpreadsheet
 } from 'lucide-react'
 import { getSales, getExpenses } from '@/app/actions/admin'
-import { format, startOfMonth, endOfMonth, isWithinInterval, parseISO } from 'date-fns'
+import { format, startOfMonth, endOfMonth, isWithinInterval, parseISO, addMonths, subMonths } from 'date-fns'
 import { ptBR } from 'date-fns/locale'
 
 export default function RelatoriosPage() {
@@ -42,6 +43,41 @@ export default function RelatoriosPage() {
     loadData()
   }, [])
 
+  const handlePrevMonth = () => {
+    const newStart = startOfMonth(subMonths(dateRange.start, 1))
+    const newEnd = endOfMonth(newStart)
+    setDateRange({ start: newStart, end: newEnd })
+  }
+
+  const handleNextMonth = () => {
+    const newStart = startOfMonth(addMonths(dateRange.start, 1))
+    const newEnd = endOfMonth(newStart)
+    setDateRange({ start: newStart, end: newEnd })
+  }
+
+  const exportToCSV = () => {
+    const headers = ['Data', 'Tipo', 'Descrição', 'Valor']
+    const rows = [
+      ...filteredSales.map(s => [format(parseISO(s.created_at), 'dd/MM/yyyy'), 'Entrada', `Venda ${s.customers?.name || ''}`, s.amount]),
+      ...filteredExpenses.map(e => [format(parseISO(e.date), 'dd/MM/yyyy'), 'Saída', e.description, e.amount])
+    ]
+
+    const csvContent = [
+      headers.join(','),
+      ...rows.map(row => row.join(','))
+    ].join('\n')
+
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' })
+    const link = document.createElement('a')
+    const url = URL.createObjectURL(blob)
+    link.setAttribute('href', url)
+    link.setAttribute('download', `relatorio_${format(dateRange.start, 'MM_yyyy')}.csv`)
+    link.style.visibility = 'hidden'
+    document.body.appendChild(link)
+    link.click()
+    document.body.removeChild(link)
+  }
+
   // Filtragem por Período
   const filteredSales = sales.filter(s => isWithinInterval(parseISO(s.created_at), { start: dateRange.start, end: dateRange.end }))
   const filteredExpenses = expenses.filter(e => isWithinInterval(parseISO(e.date), { start: dateRange.start, end: dateRange.end }))
@@ -55,7 +91,12 @@ export default function RelatoriosPage() {
   const lucroLiquido = faturamentoBruto - totalSaidas
   const margemLucro = faturamentoBruto > 0 ? (lucroLiquido / faturamentoBruto) * 100 : 0
 
-  if (loading) return <div className="p-10 text-center text-gray-500 font-medium italic opacity-60">Gerando relatório financeiro...</div>
+  if (loading) return (
+    <div className="flex flex-col items-center justify-center p-20 space-y-4">
+       <div className="w-8 h-8 border-2 border-[#5E41FF]/30 border-t-[#5E41FF] rounded-full animate-spin" />
+       <p className="text-gray-500 font-medium italic opacity-60">Gerando relatório financeiro...</p>
+    </div>
+  )
 
   return (
     <div className="max-w-6xl mx-auto space-y-10 animate-in fade-in duration-700 pb-20">
@@ -66,42 +107,40 @@ export default function RelatoriosPage() {
         </div>
         
         <div className="flex items-center gap-4 bg-[#121021] border border-white/5 p-2 rounded-3xl shadow-xl">
-           <button className="p-2 hover:bg-white/5 rounded-2xl text-gray-500 transition-all"><ChevronLeft size={20} /></button>
+           <button onClick={handlePrevMonth} className="p-2 hover:bg-white/5 rounded-2xl text-gray-500 transition-all hover:text-white"><ChevronLeft size={20} /></button>
            <div className="px-6 flex items-center gap-3">
               <CalendarIcon size={16} className="text-[#5E41FF]" />
               <span className="text-[11px] font-black uppercase tracking-widest text-white">
                  {format(dateRange.start, "MMMM yyyy", { locale: ptBR })}
               </span>
            </div>
-           <button className="p-2 hover:bg-white/5 rounded-2xl text-gray-500 transition-all"><ChevronRight size={20} /></button>
+           <button onClick={handleNextMonth} className="p-2 hover:bg-white/5 rounded-2xl text-gray-500 transition-all hover:text-white"><ChevronRight size={20} /></button>
         </div>
       </div>
 
       {/* Grid de Performance Financeira */}
       <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
-         {/* Faturamento Bruto */}
          <div className="p-8 rounded-[2.5rem] bg-[#121021] border border-white/5 relative overflow-hidden group shadow-2xl">
-            <div className="absolute -right-4 -top-4 w-24 h-24 bg-[#5E41FF]/5 rounded-full blur-3xl group-hover:bg-[#5E41FF]/10 transition-all" />
+            <div className="absolute -right-4 -top-4 w-24 h-24 bg-emerald-500/5 rounded-full blur-3xl group-hover:bg-emerald-500/10 transition-all" />
             <TrendingUp size={18} className="text-emerald-500 mb-4" />
             <p className="text-[10px] text-gray-500 font-black uppercase tracking-widest mb-1">Entradas Brutas</p>
             <h3 className="text-2xl font-black text-white">R$ {faturamentoBruto.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</h3>
          </div>
 
-         {/* Despesas Operacionais */}
          <div className="p-8 rounded-[2.5rem] bg-[#121021] border border-white/5 relative overflow-hidden group shadow-2xl">
+            <div className="absolute -right-4 -top-4 w-24 h-24 bg-red-500/5 rounded-full blur-3xl group-hover:bg-red-500/10 transition-all" />
             <TrendingDown size={18} className="text-red-500 mb-4" />
             <p className="text-[10px] text-gray-500 font-black uppercase tracking-widest mb-1">Gastos Totais</p>
             <h3 className="text-2xl font-black text-white">R$ {totalDespesas.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</h3>
          </div>
 
-         {/* Comissões Profissionais */}
          <div className="p-8 rounded-[2.5rem] bg-[#121021] border border-white/5 relative overflow-hidden group shadow-2xl">
+            <div className="absolute -right-4 -top-4 w-24 h-24 bg-blue-500/5 rounded-full blur-3xl group-hover:bg-blue-500/10 transition-all" />
             <PieChart size={18} className="text-blue-500 mb-4" />
             <p className="text-[10px] text-gray-500 font-black uppercase tracking-widest mb-1">Comissões (50%)</p>
             <h3 className="text-2xl font-black text-white">R$ {totalComissoes.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</h3>
          </div>
 
-         {/* Lucro Líquido Real */}
          <div className={`p-8 rounded-[2.5rem] border relative overflow-hidden group shadow-2xl ${lucroLiquido >= 0 ? 'bg-emerald-500/5 border-emerald-500/20' : 'bg-red-500/5 border-red-500/20'}`}>
             <DollarSign size={18} className={`${lucroLiquido >= 0 ? 'text-emerald-500' : 'text-red-500'} mb-4`} />
             <p className="text-[10px] text-gray-500 font-black uppercase tracking-widest mb-1">Lucro Líquido</p>
@@ -164,11 +203,15 @@ export default function RelatoriosPage() {
                   Seu lucro este mês é de <span className="text-white">R$ {lucroLiquido.toLocaleString('pt-BR')}</span> após todas as deduções de equipe e custos operacionais.
                </p>
             </div>
-            <button className="flex items-center gap-3 px-10 py-5 bg-white/5 hover:bg-white/10 rounded-[2rem] text-[10px] font-black uppercase tracking-widest transition-all border border-white/5">
-               <Download size={14} /> Baixar Relatório Detalhado
+            <button 
+              onClick={exportToCSV}
+              className="flex items-center gap-3 px-10 py-5 bg-white/5 hover:bg-[#5E41FF]/10 rounded-[2rem] text-[10px] font-black uppercase tracking-widest transition-all border border-white/5 hover:border-[#5E41FF]/20"
+            >
+               <FileSpreadsheet size={14} className="text-[#5E41FF]" /> Exportar Planilha (CSV)
             </button>
          </div>
       </div>
     </div>
   )
 }
+
