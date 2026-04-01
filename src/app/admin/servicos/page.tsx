@@ -1,347 +1,584 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useCallback } from 'react'
 import { 
-  Package, 
-  Plus, 
-  Search, 
-  Filter, 
-  Clock, 
-  DollarSign, 
-  MoreVertical,
-  CheckCircle2,
-  XCircle,
-  RefreshCw,
-  CheckSquare,
-  X,
-  Save,
-  Loader2,
+  Scissors,
+  Plus,
+  Search,
   Trash2,
-  Edit2
+  Edit2,
+  X,
+  Clock,
+  DollarSign,
+  ChevronLeft,
+  ChevronRight,
+  Check,
+  Loader2,
+  Package,
+  ShieldCheck,
+  ShieldAlert
 } from 'lucide-react'
-import { addService, getServices, updateService, deleteService } from '@/app/actions/admin'
 
-export default function ServicesPage() {
-  const [services, setServices] = useState<any[]>([])
+interface Service {
+  id: string
+  name: string
+  price: number
+  duration_minutes: number
+  description: string | null
+  category: string | null
+  active: boolean
+  created_at: string
+}
+
+interface FormData {
+  name: string
+  price: string
+  duration_minutes: number
+  description: string
+  category: string
+}
+
+const CATEGORIES = ['Cabelo', 'Unhas', 'Estética', 'Maquiagem', 'Depilação', 'Geral']
+
+const DURATION_OPTIONS = [
+  { value: 15, label: '15 min' },
+  { value: 30, label: '30 min' },
+  { value: 45, label: '45 min' },
+  { value: 60, label: '1h' },
+  { value: 90, label: '1h 30min' },
+  { value: 120, label: '2h' },
+  { value: 150, label: '2h 30min' },
+  { value: 180, label: '3h' },
+  { value: 240, label: '4h' },
+]
+
+export default function ServicosPage() {
+  const [services, setServices] = useState<Service[]>([])
   const [loading, setLoading] = useState(true)
-  const [search, setSearch] = useState('')
-  const [selectedCategory, setSelectedCategory] = useState('Todos')
-  
-  // Modal State
-  const [isModalOpen, setIsModalOpen] = useState(false)
-  const [editingService, setEditingService] = useState<any>(null)
   const [saving, setSaving] = useState(false)
   
-  // Form State
-  const [formData, setFormData] = useState({
+  const [search, setSearch] = useState('')
+  const [selectedCategory, setSelectedCategory] = useState<string | null>(null)
+  const [showInactive, setShowInactive] = useState(true)
+  const [currentPage, setCurrentPage] = useState(1)
+  const itemsPerPage = 10
+  
+  const [isModalOpen, setIsModalOpen] = useState(false)
+  const [editingService, setEditingService] = useState<Service | null>(null)
+  
+  const [formData, setFormData] = useState<FormData>({
     name: '',
-    category: '',
-    duration_minutes: 30,
-    price: 0,
-    description: ''
+    price: '',
+    duration_minutes: 60,
+    description: '',
+    category: ''
   })
+  
+  const [message, setMessage] = useState<{type: 'success' | 'error', text: string} | null>(null)
 
-  async function fetchServices() {
+  const showMessage = (type: 'success' | 'error', text: string) => {
+    setMessage({ type, text })
+    setTimeout(() => setMessage(null), 3000)
+  }
+
+  const fetchServices = useCallback(async () => {
     setLoading(true)
     try {
-      const data = await getServices()
-      setServices(data)
-    } catch (e) {
-      console.error(e)
+      const response = await fetch('/api/services')
+      const data = await response.json()
+      
+      if (!response.ok) throw new Error(data.error)
+      
+      setServices(data.data || [])
+    } catch (error: any) {
+      console.error('Erro ao carregar serviços:', error)
+      showMessage('error', 'Erro ao carregar serviços')
     }
     setLoading(false)
-  }
+  }, [])
 
   useEffect(() => {
     fetchServices()
-  }, [])
+  }, [fetchServices])
 
-  const categories = ['Todos', ...Array.from(new Set((services || []).map(s => s?.category).filter(Boolean)))]
-  
-  const filteredServices = (services || []).filter(s => {
-    const matchesSearch = (s?.name || '').toLowerCase().includes(search.toLowerCase())
-    const matchesCategory = selectedCategory === 'Todos' || s?.category === selectedCategory
-    return matchesSearch && matchesCategory
+  const categories = ['Todos', ...CATEGORIES]
+
+  const filteredServices = services.filter(s => {
+    const matchesSearch = !search || 
+      s.name?.toLowerCase().includes(search.toLowerCase()) ||
+      s.description?.toLowerCase().includes(search.toLowerCase()) ||
+      s.category?.toLowerCase().includes(search.toLowerCase())
+    const matchesCategory = !selectedCategory || selectedCategory === 'Todos' || selectedCategory === 'Todos' || s.category === selectedCategory
+    const matchesActive = showInactive ? true : s.active
+    return matchesSearch && matchesActive && (selectedCategory === 'Todos' || !selectedCategory || s.category === selectedCategory || !s.category)
   })
 
-  const openEditModal = (service: any) => {
-    setEditingService(service)
-    setFormData({
-      name: service.name,
-      category: service.category || '',
-      duration_minutes: service.duration_minutes,
-      price: service.price,
-      description: service.description || ''
-    })
-    setIsModalOpen(true)
-  }
+  const activeServices = services.filter(s => s.active).length
+  const totalServices = services.length
+  const totalPages = Math.ceil(filteredServices.length / itemsPerPage)
+  const paginatedServices = filteredServices.slice(
+    (currentPage - 1) * itemsPerPage,
+    currentPage * itemsPerPage
+  )
 
-  const handleDelete = async (id: string) => {
-    if (!confirm('Tem certeza que deseja excluir este serviço? Agendamentos existentes não serão afetados.')) return
-    try {
-      await deleteService(id)
-      await fetchServices()
-    } catch (error: any) {
-      alert('Erro ao excluir: ' + error.message)
-    }
-  }
-
-  const handleSaveService = async (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     setSaving(true)
 
     try {
       if (editingService) {
-        await updateService(editingService.id, formData)
+        const response = await fetch('/api/services', {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            id: editingService.id,
+            name: formData.name,
+            price: Number(formData.price),
+            duration_minutes: formData.duration_minutes,
+            description: formData.description || null,
+            category: formData.category || null
+          })
+        })
+        
+        if (!response.ok) {
+          const data = await response.json()
+          throw new Error(data.error || 'Erro ao atualizar')
+        }
+        
+        showMessage('success', 'Serviço atualizado com sucesso!')
       } else {
-        await addService(formData)
+        const response = await fetch('/api/services', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            name: formData.name,
+            price: Number(formData.price),
+            duration_minutes: formData.duration_minutes,
+            description: formData.description || null,
+            category: formData.category || null
+          })
+        })
+        
+        if (!response.ok) {
+          const data = await response.json()
+          throw new Error(data.error || 'Erro ao criar')
+        }
+        
+        showMessage('success', 'Serviço criado com sucesso!')
       }
-      await fetchServices()
+      
       setIsModalOpen(false)
       setEditingService(null)
-      setFormData({ name: '', category: '', duration_minutes: 30, price: 0, description: '' })
+      setFormData({ name: '', price: '', duration_minutes: 60, description: '', category: '' })
+      fetchServices()
     } catch (error: any) {
-      alert('Erro ao salvar serviço: ' + error.message)
+      showMessage('error', error.message)
     }
-    
+
     setSaving(false)
   }
 
+  const handleEdit = (service: Service) => {
+    setEditingService(service)
+    setFormData({
+      name: service.name || '',
+      price: String(service.price || ''),
+      duration_minutes: service.duration_minutes || 60,
+      description: service.description || '',
+      category: service.category || ''
+    })
+    setIsModalOpen(true)
+  }
+
+  const handleToggleActive = async (id: string, currentActive: boolean) => {
+    const action = currentActive ? 'desativar' : 'ativar'
+    if (!confirm(`Deseja ${action} este serviço?`)) return
+
+    try {
+      const response = await fetch('/api/services', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          id,
+          active: !currentActive
+        })
+      })
+      
+      if (!response.ok) throw new Error('Erro ao atualizar')
+      
+      showMessage('success', `Serviço ${action === 'desativar' ? 'desativado' : 'ativado'}!`)
+      fetchServices()
+    } catch (error) {
+      showMessage('error', 'Erro ao atualizar serviço')
+    }
+  }
+
+  const handleDelete = async (id: string) => {
+    if (!confirm('⚠️ Excluir permanentemente este serviço? Agendamentos existentes não serão afetados.')) return
+
+    try {
+      const response = await fetch(`/api/services?id=${id}`, {
+        method: 'DELETE'
+      })
+
+      if (!response.ok) throw new Error('Erro ao excluir')
+
+      showMessage('success', 'Serviço excluído!')
+      fetchServices()
+    } catch (error) {
+      showMessage('error', 'Erro ao excluir serviço')
+    }
+  }
+
   return (
-    <div className="max-w-[1400px] mx-auto space-y-8 animate-in fade-in duration-700 pb-20">
-      {/* Header Area */}
-      <div className="flex flex-col gap-6 lg:flex-row lg:items-center lg:justify-between bg-[#121021] p-8 rounded-[2.5rem] border border-white/5 shadow-2xl">
-        <div>
-          <h1 className="text-3xl font-black italic uppercase tracking-tighter text-white">Catálogo de Serviços</h1>
-          <p className="text-sm text-gray-500 mt-2 font-medium">Gestão de pacotes, precificação e tempos de execução.</p>
-        </div>
-        <div className="flex items-center gap-4">
-          <button 
-            onClick={fetchServices}
-            className="p-4 bg-white/5 text-gray-400 hover:text-white rounded-2xl hover:bg-white/10 transition-all border border-white/5"
-          >
-            <RefreshCw size={20} className={loading ? 'animate-spin' : ''} />
-          </button>
-          <button 
-            onClick={() => { setEditingService(null); setFormData({ name: '', category: '', duration_minutes: 30, price: 0, description: '' }); setIsModalOpen(true); }}
-            className="flex items-center gap-3 px-8 py-4 bg-[#5E41FF] text-white rounded-2xl text-[11px] font-black uppercase tracking-widest shadow-xl shadow-[#5E41FF]/20 hover:scale-[1.02] active:scale-95 transition-all"
-          >
-            <Plus size={20} /> Adicionar Serviço
-          </button>
-        </div>
-      </div>
-
-      {/* Tabs Categorias Premium */}
-      <div className="flex items-center gap-4 bg-black/20 p-1.5 rounded-2xl border border-white/5 w-fit overflow-x-auto no-scrollbar">
-         {categories.map(cat => (
-           <button 
-             key={cat}
-             onClick={() => setSelectedCategory(cat)}
-             className={`px-6 py-2.5 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all whitespace-nowrap ${selectedCategory === cat ? 'bg-[#5E41FF] text-white shadow-lg' : 'text-gray-500 hover:text-gray-300'}`}
-           >
-             {cat}
-           </button>
-         ))}
-      </div>
-
-      {/* Main Table Container */}
-      <div className="bg-[#121021] border border-white/5 rounded-[3rem] overflow-hidden shadow-2xl">
-         {/* Filter Bar */}
-         <div className="p-6 border-b border-white/5 flex flex-col lg:flex-row gap-4 justify-between bg-black/20">
-            <div className="relative flex-1 max-w-md">
-               <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-500" size={18} />
-               <input 
-                 type="text" 
-                 placeholder="O que você está procurando?" 
-                 value={search}
-                 onChange={(e) => setSearch(e.target.value)}
-                 className="w-full pl-12 pr-6 py-4 bg-black/40 border border-white/5 rounded-2xl text-sm focus:border-[#5E41FF]/50 outline-none transition-all placeholder-gray-600 text-white"
-               />
+    <div className="min-h-screen bg-[#0A0A0A] text-white p-6">
+      
+      {/* Header */}
+      <div className="max-w-7xl mx-auto mb-8">
+        <div className="flex items-center justify-between flex-wrap gap-4">
+          <div className="flex items-center gap-4">
+            <div className="w-14 h-14 rounded-2xl bg-[#5E41FF] flex items-center justify-center">
+              <Scissors size={28} className="text-white" />
             </div>
-         </div>
-
-         <div className="overflow-x-auto no-scrollbar">
-            <table className="w-full text-left border-collapse">
-               <thead>
-                  <tr className="bg-white/5 text-[10px] uppercase tracking-widest font-black text-gray-500">
-                     <th className="px-8 py-5 w-10 text-center"><CheckSquare size={14} className="mx-auto opacity-30" /></th>
-                     <th className="px-8 py-5">Serviço</th>
-                     <th className="px-8 py-5 text-right font-black">Preço</th>
-                     <th className="px-8 py-5 text-center font-black">Duração</th>
-                     <th className="px-8 py-5">Categoria / Descrição</th>
-                     <th className="px-8 py-5 text-right pr-12">Ações</th>
-                  </tr>
-               </thead>
-               <tbody className="divide-y divide-white/[0.03]">
-                  {loading ? (
-                    <tr>
-                      <td colSpan={6} className="px-8 py-32 text-center">
-                         <div className="flex flex-col items-center gap-4">
-                            <Loader2 size={32} className="animate-spin text-[#5E41FF]" />
-                            <span className="text-[10px] font-black uppercase tracking-widest text-gray-500 italic">Consultando Catálogo...</span>
-                         </div>
-                      </td>
-                    </tr>
-                  ) : filteredServices.length === 0 ? (
-                    <tr>
-                      <td colSpan={6} className="px-8 py-32 text-center text-gray-500 italic font-medium">Nenhum serviço encontrado.</td>
-                    </tr>
-                  ) : filteredServices.map((service) => (
-                    <tr key={service.id} className="group hover:bg-white/5 transition-all cursor-default">
-                       <td className="px-8 py-6 text-center"><input type="checkbox" className="w-4 h-4 rounded bg-black/40 border-white/10 text-[#5E41FF] focus:ring-0" /></td>
-                       <td className="px-8 py-6">
-                          <div className="flex items-center gap-4">
-                             <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-[#5E41FF]/20 to-transparent flex items-center justify-center border border-[#5E41FF]/20 shadow-inner">
-                                <Package size={20} className="text-[#5E41FF]" />
-                             </div>
-                             <div>
-                                <span className="block font-black text-white text-[15px] tracking-tight">{service.name}</span>
-                                <span className="text-[9px] font-black text-[#5E41FF] uppercase mt-0.5 block tracking-widest opacity-80">{service.category || 'Geral'}</span>
-                             </div>
-                          </div>
-                       </td>
-                       <td className="px-8 py-6 text-right font-black text-white text-lg tracking-tighter">
-                          {service.price.toLocaleString('pt-BR', { minimumFractionDigits: 2, style: 'currency', currency: 'BRL' })}
-                       </td>
-                       <td className="px-8 py-6 text-center">
-                          <div className="inline-flex items-center gap-1.5 px-4 py-1.5 rounded-xl bg-orange-500/10 text-orange-500 text-[10px] font-black uppercase ring-1 ring-orange-500/20">
-                             <Clock size={12} /> {service.duration_minutes}m
-                          </div>
-                       </td>
-                       <td className="px-8 py-6">
-                          <p className="text-xs text-gray-500 italic line-clamp-1 max-w-[200px]">{service.description || 'Nenhuma descrição.'}</p>
-                       </td>
-                       <td className="px-8 py-6 text-right space-x-2 pr-12">
-                          <button 
-                            onClick={() => openEditModal(service)}
-                            className="p-3 text-gray-500 hover:text-blue-400 bg-white/5 rounded-xl transition-all border border-white/5"
-                          >
-                             <Edit2 size={16} />
-                          </button>
-                          <button 
-                            onClick={() => handleDelete(service.id)}
-                            className="p-3 text-gray-500 hover:text-red-500 bg-white/5 rounded-xl transition-all border border-white/5"
-                          >
-                             <Trash2 size={16} />
-                          </button>
-                       </td>
-                    </tr>
-                  ))}
-               </tbody>
-            </table>
-         </div>
+            <div>
+              <h1 className="text-3xl font-bold">Serviços</h1>
+              <p className="text-gray-500 text-sm">{activeServices} serviços ativos</p>
+            </div>
+          </div>
+          
+          <div className="flex items-center gap-3">
+            <button
+              onClick={() => setShowInactive(!showInactive)}
+              className={`p-3 rounded-xl transition-all ${
+                showInactive 
+                  ? 'bg-emerald-500/20 text-emerald-400' 
+                  : 'bg-[#1a1a2e] text-gray-400 hover:text-white'
+              }`}
+              title={showInactive ? 'Ocultar desativados' : 'Mostrar desativados'}
+            >
+              {showInactive ? <ShieldAlert size={20} /> : <ShieldCheck size={20} />}
+            </button>
+            
+            <button
+              onClick={() => { setEditingService(null); setFormData({ name: '', price: '', duration_minutes: 60, description: '', category: '' }); setIsModalOpen(true); }}
+              className="flex items-center gap-2 px-6 py-3 bg-[#5E41FF] rounded-xl font-medium hover:brightness-110 transition-all"
+            >
+              <Plus size={20} />
+              Novo Serviço
+            </button>
+          </div>
+        </div>
       </div>
 
-      {/* MODAL SERVIÇO PREMIUM */}
+      {/* Mensagem */}
+      {message && (
+        <div className={`max-w-7xl mx-auto mb-4 p-4 rounded-xl ${message.type === 'success' ? 'bg-green-600/20 text-green-400 border border-green-600/30' : 'bg-red-600/20 text-red-400 border border-red-600/30'}`}>
+          {message.text}
+        </div>
+      )}
+
+      {/* Cards de resumo */}
+      <div className="max-w-7xl mx-auto grid grid-cols-1 md:grid-cols-3 gap-4 mb-8">
+        <div className="bg-[#121021] rounded-2xl p-6 border border-white/10">
+          <div className="flex items-center gap-3 mb-2">
+            <Package size={20} className="text-[#5E41FF]" />
+            <span className="text-gray-400 text-sm">Total de Serviços</span>
+          </div>
+          <p className="text-3xl font-bold">{totalServices}</p>
+        </div>
+        
+        <div className="bg-[#121021] rounded-2xl p-6 border border-white/10">
+          <div className="flex items-center gap-3 mb-2">
+            <ShieldCheck size={20} className="text-emerald-400" />
+            <span className="text-gray-400 text-sm">Serviços Ativos</span>
+          </div>
+          <p className="text-3xl font-bold text-emerald-400">{activeServices}</p>
+        </div>
+        
+        <div className="bg-[#121021] rounded-2xl p-6 border border-white/10">
+          <div className="flex items-center gap-3 mb-2">
+            <Clock size={20} className="text-orange-400" />
+            <span className="text-gray-400 text-sm">Tempo Médio</span>
+          </div>
+          <p className="text-3xl font-bold text-orange-400">
+            {totalServices > 0 ? Math.round(services.reduce((sum, s) => sum + s.duration_minutes, 0) / totalServices) : 0} min
+          </p>
+        </div>
+      </div>
+
+      {/* Categorias */}
+      <div className="max-w-7xl mx-auto mb-6">
+        <div className="flex items-center gap-2 overflow-x-auto pb-2">
+          {categories.map(cat => (
+            <button
+              key={cat}
+              onClick={() => { setSelectedCategory(cat === 'Todos' ? null : cat); setCurrentPage(1); }}
+              className={`px-4 py-2 rounded-xl text-sm font-medium whitespace-nowrap transition-all ${
+                (cat === 'Todos' && !selectedCategory) || selectedCategory === cat
+                  ? 'bg-[#5E41FF] text-white'
+                  : 'bg-[#121021] text-gray-400 hover:text-white border border-white/10'
+              }`}
+            >
+              {cat}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {/* Busca */}
+      <div className="max-w-7xl mx-auto mb-6">
+        <div className="bg-[#121021] rounded-2xl p-4 border border-white/10">
+          <div className="relative">
+            <Search size={18} className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-500" />
+            <input
+              type="text"
+              placeholder="Buscar por nome, categoria ou descrição..."
+              value={search}
+              onChange={e => { setSearch(e.target.value); setCurrentPage(1); }}
+              className="w-full bg-black/40 border border-white/10 rounded-xl pl-12 pr-4 py-3 outline-none focus:border-[#5E41FF] transition-all"
+            />
+          </div>
+        </div>
+      </div>
+
+      {/* Tabela de serviços */}
+      <div className="max-w-7xl mx-auto bg-[#121021] rounded-2xl border border-white/10 overflow-hidden">
+        {loading ? (
+          <div className="p-8 text-center text-gray-500">
+            <Loader2 size={32} className="animate-spin mx-auto mb-4" />
+            Carregando serviços...
+          </div>
+        ) : paginatedServices.length === 0 ? (
+          <div className="p-8 text-center text-gray-500">
+            {search || selectedCategory ? 'Nenhum serviço encontrado para esta busca' : 'Nenhum serviço cadastrado'}
+          </div>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full">
+              <thead>
+                <tr className="border-b border-white/10">
+                  <th className="text-left p-4 text-sm font-medium text-gray-400">Serviço</th>
+                  <th className="text-left p-4 text-sm font-medium text-gray-400">Categoria</th>
+                  <th className="text-center p-4 text-sm font-medium text-gray-400">Duração</th>
+                  <th className="text-right p-4 text-sm font-medium text-gray-400">Preço</th>
+                  <th className="text-center p-4 text-sm font-medium text-gray-400">Status</th>
+                  <th className="text-right p-4 text-sm font-medium text-gray-400">Ações</th>
+                </tr>
+              </thead>
+              <tbody>
+                {paginatedServices.map((service, index) => (
+                  <tr 
+                    key={service.id} 
+                    className={`border-b border-white/5 ${service.active ? '' : 'bg-red-500/5'} ${index % 2 === 0 ? '' : 'bg-white/[0.02]'}`}
+                  >
+                    <td className="p-4">
+                      <div className="flex items-center gap-3">
+                        <div className="w-10 h-10 rounded-xl bg-[#5E41FF]/20 flex items-center justify-center">
+                          <Package size={18} className="text-[#5E41FF]" />
+                        </div>
+                        <div>
+                          <p className={`font-bold ${!service.active ? 'text-red-400/70' : ''}`}>{service.name}</p>
+                          {service.description && (
+                            <p className="text-xs text-gray-500 truncate max-w-[250px]">{service.description}</p>
+                          )}
+                        </div>
+                      </div>
+                    </td>
+                    <td className="p-4">
+                      <span className="px-3 py-1 rounded-full text-xs font-medium bg-white/10">
+                        {service.category || 'Geral'}
+                      </span>
+                    </td>
+                    <td className="p-4 text-center">
+                      <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-medium bg-orange-500/20 text-orange-400">
+                        <Clock size={14} />
+                        {service.duration_minutes} min
+                      </div>
+                    </td>
+                    <td className="p-4 text-right">
+                      <span className="text-lg font-bold text-emerald-400">
+                        R$ {Number(service.price).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+                      </span>
+                    </td>
+                    <td className="p-4 text-center">
+                      {service.active ? (
+                        <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-medium bg-emerald-500/20 text-emerald-400">
+                          <ShieldCheck size={14} />
+                          Ativo
+                        </span>
+                      ) : (
+                        <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-medium bg-red-500/20 text-red-400">
+                          <ShieldAlert size={14} />
+                          Inativo
+                        </span>
+                      )}
+                    </td>
+                    <td className="p-4 text-right">
+                      <div className="flex items-center justify-end gap-2">
+                        <button
+                          onClick={() => handleEdit(service)}
+                          className="p-2 bg-blue-500/20 text-blue-400 rounded-lg hover:bg-blue-500/30 transition-all"
+                          title="Editar"
+                        >
+                          <Edit2 size={16} />
+                        </button>
+                        <button
+                          onClick={() => handleToggleActive(service.id, service.active)}
+                          className={`p-2 rounded-lg transition-all ${
+                            service.active 
+                              ? 'bg-orange-500/20 text-orange-400 hover:bg-orange-500/30' 
+                              : 'bg-emerald-500/20 text-emerald-400 hover:bg-emerald-500/30'
+                          }`}
+                          title={service.active ? 'Desativar' : 'Ativar'}
+                        >
+                          {service.active ? <ShieldAlert size={16} /> : <ShieldCheck size={16} />}
+                        </button>
+                        <button
+                          onClick={() => handleDelete(service.id)}
+                          className="p-2 bg-red-500/20 text-red-400 rounded-lg hover:bg-red-500/30 transition-all"
+                          title="Excluir"
+                        >
+                          <Trash2 size={16} />
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+        
+        {/* Paginação */}
+        {totalPages > 1 && (
+          <div className="flex items-center justify-between p-4 border-t border-white/10">
+            <p className="text-sm text-gray-400">
+              Mostrando {(currentPage - 1) * itemsPerPage + 1} a {Math.min(currentPage * itemsPerPage, filteredServices.length)} de {filteredServices.length}
+            </p>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
+                disabled={currentPage === 1}
+                className="p-2 bg-white/5 rounded-lg disabled:opacity-30 hover:bg-white/10 transition-all"
+              >
+                <ChevronLeft size={18} />
+              </button>
+              <span className="px-4 py-2 text-sm">
+                {currentPage} / {totalPages}
+              </span>
+              <button
+                onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
+                disabled={currentPage === totalPages}
+                className="p-2 bg-white/5 rounded-lg disabled:opacity-30 hover:bg-white/10 transition-all"
+              >
+                <ChevronRight size={18} />
+              </button>
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* Modal */}
       {isModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center lg:justify-end animate-in fade-in duration-300">
-          <div className="absolute inset-0 bg-black/80 backdrop-blur-xl" onClick={() => setIsModalOpen(false)} />
-          
-          <div className="relative w-full h-full lg:w-[500px] bg-[#121021] border-l border-white/10 shadow-2xl flex flex-col slide-in-from-right duration-500">
-             
-             <div className="p-8 border-b border-white/5 text-white bg-black/20 flex items-center justify-between">
-                <div className="flex items-center gap-4">
-                   <div className="w-12 h-12 rounded-2xl bg-[#5E41FF]/10 flex items-center justify-center text-[#5E41FF]">
-                      <Package size={24} />
-                   </div>
-                   <div>
-                      <h2 className="text-xl font-black italic uppercase tracking-tighter">{editingService ? 'Editar' : 'Novo'} Serviço</h2>
-                      <p className="text-[10px] text-gray-500 font-bold uppercase tracking-widest mt-1">Definição de Catálogo</p>
-                   </div>
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80" onClick={() => setIsModalOpen(false)}>
+          <div className="bg-[#121021] rounded-3xl w-full max-w-md p-8" onClick={e => e.stopPropagation()}>
+            <div className="flex items-center justify-between mb-6">
+              <h2 className="text-2xl font-bold">
+                {editingService ? 'Editar Serviço' : 'Novo Serviço'}
+              </h2>
+              <button onClick={() => setIsModalOpen(false)} className="p-2 hover:bg-white/10 rounded-lg">
+                <X size={24} />
+              </button>
+            </div>
+            
+            <form onSubmit={handleSubmit} className="space-y-6">
+              {/* Nome */}
+              <div>
+                <label className="block text-sm font-medium text-gray-400 mb-2">Nome do Serviço *</label>
+                <div className="relative">
+                  <Package className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-500" size={20} />
+                  <input
+                    type="text"
+                    required
+                    value={formData.name}
+                    onChange={e => setFormData({...formData, name: e.target.value})}
+                    className="w-full bg-black/40 border border-white/10 rounded-xl pl-12 pr-4 py-4 outline-none focus:border-[#5E41FF] transition-all"
+                    placeholder="Ex: Corte Feminino"
+                  />
                 </div>
-                <button onClick={() => setIsModalOpen(false)} className="p-3 text-gray-500 hover:text-white rounded-full bg-white/5 transition-all"><X size={24} /></button>
-             </div>
-
-             <div className="flex-1 overflow-y-auto p-8 space-y-10 no-scrollbar text-white">
-                <form onSubmit={handleSaveService} className="space-y-8">
-                  
-                  <div className="space-y-3">
-                     <label className="text-[11px] font-black uppercase tracking-widest text-[#5E41FF]">Categoria do Serviço</label>
-                     <div className="relative">
-                        <select 
-                          value={formData.category}
-                          onChange={e => setFormData({...formData, category: e.target.value})}
-                          className="w-full bg-black/40 text-white border border-white/5 rounded-2xl px-6 py-4 outline-none focus:border-[#5E41FF]/40 transition-all text-sm font-bold appearance-none cursor-pointer"
-                        >
-                           <option value="">Selecione...</option>
-                           {categories.filter(c => c !== 'Todos').map(c => (
-                             <option key={c} value={c}>{c}</option>
-                           ))}
-                           <option value="Cabelo">Cabelo</option>
-                           <option value="Unhas">Unhas</option>
-                           <option value="Estética">Estética</option>
-                        </select>
-                        <MoreVertical className="absolute right-6 top-1/2 -translate-y-1/2 text-gray-600 pointer-events-none" size={16} />
-                     </div>
-                  </div>
-
-                  <div className="space-y-3">
-                     <label className="text-[11px] font-black uppercase tracking-widest text-[#5E41FF]">Nome Comercial</label>
-                     <input 
-                       required
-                       type="text" 
-                       value={formData.name}
-                       onChange={e => setFormData({...formData, name: e.target.value})}
-                       placeholder="Ex: Corte Designer + Hidratação"
-                       className="w-full bg-black/40 border border-white/5 rounded-2xl px-6 py-4 outline-none focus:border-[#5E41FF]/40 transition-all placeholder-gray-700 text-sm font-bold"
-                     />
-                  </div>
-
-                  <div className="grid grid-cols-2 gap-6">
-                     <div className="space-y-3">
-                        <label className="text-[11px] font-black uppercase tracking-widest text-orange-500">Tempo Estimado</label>
-                        <select 
-                          value={formData.duration_minutes}
-                          onChange={e => setFormData({...formData, duration_minutes: Number(e.target.value)})}
-                          className="w-full bg-black/40 text-white border border-white/5 rounded-2xl px-6 py-4 outline-none focus:border-[#5E41FF]/40 transition-all text-sm font-bold appearance-none"
-                        >
-                           <option value={15}>15 min</option>
-                           <option value={30}>30 min</option>
-                           <option value={45}>45 min</option>
-                           <option value={60}>1h 00m</option>
-                           <option value={90}>1h 30m</option>
-                           <option value={120}>2h 00m</option>
-                           <option value={180}>3h 00m</option>
-                           <option value={240}>4h 00m</option>
-                        </select>
-                     </div>
-                     <div className="space-y-3">
-                        <label className="text-[11px] font-black uppercase tracking-widest text-emerald-500">Preço Base (R$)</label>
-                        <input 
-                          required
-                          type="number" 
-                          step="0.01"
-                          value={formData.price || ''}
-                          onChange={e => setFormData({...formData, price: Number(e.target.value)})}
-                          placeholder="0.00"
-                          className="w-full bg-black/40 border border-white/5 rounded-2xl px-6 py-4 outline-none focus:border-[#5E41FF]/40 transition-all placeholder-gray-700 text-sm font-bold text-right"
-                        />
-                     </div>
-                  </div>
-
-                  <div className="space-y-3">
-                     <label className="text-[11px] font-black uppercase tracking-widest text-[#5E41FF]">Detalhes do Especialista</label>
-                     <textarea 
-                       rows={4}
-                       value={formData.description}
-                       onChange={e => setFormData({...formData, description: e.target.value})}
-                       placeholder="O que o cliente precisa saber sobre este serviço?"
-                       className="w-full bg-black/40 border border-white/5 rounded-2xl px-6 py-5 outline-none focus:border-[#5E41FF]/40 transition-all placeholder-gray-700 text-sm resize-none font-medium"
-                     />
-                  </div>
-                </form>
-             </div>
-
-             <div className="p-8 bg-black/20 border-t border-white/5">
-                <button 
-                  onClick={handleSaveService}
-                  disabled={saving || !formData.name || !formData.price}
-                  className="w-full py-5 bg-[#5E41FF] text-white rounded-2xl text-[11px] font-black uppercase tracking-widest shadow-xl shadow-[#5E41FF]/20 hover:brightness-110 active:scale-95 disabled:opacity-50 disabled:grayscale transition-all flex items-center justify-center gap-3"
+              </div>
+              
+              {/* Categoria */}
+              <div>
+                <label className="block text-sm font-medium text-gray-400 mb-2">Categoria</label>
+                <select
+                  value={formData.category}
+                  onChange={e => setFormData({...formData, category: e.target.value})}
+                  className="w-full bg-black/40 border border-white/10 rounded-xl px-4 py-4 outline-none focus:border-[#5E41FF] transition-all"
                 >
-                   {saving ? <Loader2 size={18} className="animate-spin" /> : <Save size={18} />}
-                   {editingService ? 'Salvar Alterações' : 'Criar Serviço'}
-                </button>
-             </div>
+                  <option value="">Selecione...</option>
+                  {CATEGORIES.map(cat => (
+                    <option key={cat} value={cat}>{cat}</option>
+                  ))}
+                </select>
+              </div>
+              
+              {/* Preço e Duração */}
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-400 mb-2">Preço (R$) *</label>
+                  <div className="relative">
+                    <DollarSign className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-500" size={20} />
+                    <input
+                      type="number"
+                      step="0.01"
+                      required
+                      value={formData.price}
+                      onChange={e => setFormData({...formData, price: e.target.value})}
+                      className="w-full bg-black/40 border border-white/10 rounded-xl pl-12 pr-4 py-4 outline-none focus:border-[#5E41FF] transition-all"
+                      placeholder="0,00"
+                    />
+                  </div>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-400 mb-2">Duração</label>
+                  <div className="relative">
+                    <Clock className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-500" size={20} />
+                    <select
+                      value={formData.duration_minutes}
+                      onChange={e => setFormData({...formData, duration_minutes: Number(e.target.value)})}
+                      className="w-full bg-black/40 border border-white/10 rounded-xl pl-12 pr-4 py-4 outline-none focus:border-[#5E41FF] transition-all appearance-none"
+                    >
+                      {DURATION_OPTIONS.map(opt => (
+                        <option key={opt.value} value={opt.value}>{opt.label}</option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+              </div>
+              
+              {/* Descrição */}
+              <div>
+                <label className="block text-sm font-medium text-gray-400 mb-2">Descrição</label>
+                <textarea
+                  rows={3}
+                  value={formData.description}
+                  onChange={e => setFormData({...formData, description: e.target.value})}
+                  className="w-full bg-black/40 border border-white/10 rounded-xl px-4 py-4 outline-none focus:border-[#5E41FF] transition-all resize-none"
+                  placeholder="Detalhes sobre o serviço..."
+                />
+              </div>
+              
+              {/* Botão */}
+              <button
+                type="submit"
+                disabled={saving || !formData.name || !formData.price}
+                className="w-full py-4 bg-[#5E41FF] text-white font-bold rounded-xl hover:brightness-110 transition-all flex items-center justify-center gap-2 disabled:opacity-50"
+              >
+                {saving ? <Loader2 size={20} className="animate-spin" /> : <Check size={20} />}
+                {saving ? 'Salvando...' : editingService ? 'Atualizar Serviço' : 'Criar Serviço'}
+              </button>
+            </form>
           </div>
         </div>
       )}

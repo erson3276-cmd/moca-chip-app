@@ -12,6 +12,7 @@ CREATE TABLE services (
   price DECIMAL(10, 2) DEFAULT 0,
   duration_minutes INTEGER DEFAULT 60,
   description TEXT,
+  category TEXT,
   active BOOLEAN DEFAULT true,
   created_at TIMESTAMPTZ DEFAULT NOW(),
   updated_at TIMESTAMPTZ DEFAULT NOW()
@@ -66,6 +67,9 @@ DROP INDEX IF EXISTS idx_vendas_date;
 DROP INDEX IF EXISTS idx_vendas_customer;
 DROP INDEX IF EXISTS idx_customers_name;
 DROP INDEX IF EXISTS idx_customers_active;
+DROP INDEX IF EXISTS idx_services_name;
+DROP INDEX IF EXISTS idx_services_category;
+DROP INDEX IF EXISTS idx_services_active;
 
 CREATE INDEX idx_appointments_start ON appointments(start_time);
 CREATE INDEX idx_appointments_status ON appointments(status);
@@ -74,19 +78,26 @@ CREATE INDEX idx_vendas_date ON vendas(date);
 CREATE INDEX idx_vendas_customer ON vendas(customer_id);
 CREATE INDEX idx_customers_name ON customers(name);
 CREATE INDEX idx_customers_active ON customers(active);
+CREATE INDEX idx_services_name ON services(name);
+CREATE INDEX idx_services_category ON services(category);
+CREATE INDEX idx_services_active ON services(active);
 
 -- 6. Dados iniciais - SERVIÇOS
 DELETE FROM services;
-INSERT INTO services (name, price, duration_minutes, description) VALUES
-  ('Corte Feminino', 80.00, 60, 'Corte feminino clássico'),
-  ('Corte Masculino', 50.00, 30, 'Corte masculino'),
-  ('Escova', 60.00, 45, 'Escova modeladora'),
-  ('Pintura', 120.00, 120, 'Pintura de cabelo'),
-  ('Acrygel', 200.00, 180, 'Unhas em acrygel'),
-  ('Manicure', 40.00, 45, 'Manicure tradicional'),
-  ('Pedicure', 50.00, 60, 'Pedicure'),
-  ('Sobrancelha', 30.00, 20, 'Design de sobrancelha'),
-  ('Maquiagem', 150.00, 60, 'Maquiagem profissional');
+INSERT INTO services (name, price, duration_minutes, description, category) VALUES
+  ('Corte Feminino', 80.00, 60, 'Corte feminino clássico com finalização', 'Cabelo'),
+  ('Corte Masculino', 50.00, 30, 'Corte masculino moderno', 'Cabelo'),
+  ('Escova', 60.00, 45, 'Escova modeladora', 'Cabelo'),
+  ('Pintura Completa', 120.00, 120, 'Pintura de cabelo completa com retoque', 'Cabelo'),
+  ('Mechas / Luzes', 150.00, 180, 'Mechas finas ou grossas', 'Cabelo'),
+  ('Hidratação', 70.00, 45, 'Tratamento hidratante profundo', 'Cabelo'),
+  ('Acrygel', 200.00, 180, 'Unhas em acrygel esculpidas', 'Unhas'),
+  ('Manicure', 40.00, 45, 'Manicure tradicional', 'Unhas'),
+  ('Pedicure', 50.00, 60, 'Pedicure completa', 'Unhas'),
+  ('Sobrancelha', 30.00, 20, 'Design de sobrancelha', 'Estética'),
+  ('Depilação Buço', 25.00, 15, 'Depilação de buço com cera', 'Depilação'),
+  ('Maquiagem', 150.00, 60, 'Maquiagem profissional', 'Maquiagem'),
+  ('Maquiagem noivas', 350.00, 120, 'Maquiagem para.noivas', 'Maquiagem');
 
 -- 7. Dados iniciais - CLIENTES
 DELETE FROM customers;
@@ -149,6 +160,7 @@ END;
 $$ LANGUAGE plpgsql SECURITY DEFINER;
 
 -- 10. Função para atualizar timestamp
+DROP FUNCTION IF EXISTS update_updated_at;
 CREATE OR REPLACE FUNCTION update_updated_at()
 RETURNS TRIGGER AS $$
 BEGIN
