@@ -105,12 +105,12 @@ export default function AgendaPage() {
     fetchData()
   }, [currentDate])
 
-  // Lógica de Renderização de Cartões (Top e Height) - usando UTC para consistência
+  // Lógica de Renderização de Cartões (Top e Height) - usando hora local
   const getCardPosition = (startTimeStr: string, duration: number) => {
     const d = parseISO(startTimeStr)
-    // Usar getUTCHours() para garantir que estamos pegando a hora em UTC (same as Supabase)
+    // Usar hora local do usuário
     const hourStart = 0
-    const minutesFromStartOfDay = (d.getUTCHours() - hourStart) * 60 + d.getUTCMinutes()
+    const minutesFromStartOfDay = (d.getHours() - hourStart) * 60 + d.getMinutes()
     
     const top = (minutesFromStartOfDay / 30) * 64
     const height = (duration / 30) * 64
@@ -334,7 +334,7 @@ export default function AgendaPage() {
                                   <div className="space-y-1">
                                      <div className="flex items-center justify-between">
                                         <span className="text-[9px] font-black uppercase tracking-widest flex items-center gap-1 opacity-70">
-                                           <Clock size={10} /> {format(parseISO(apt.start_time), 'HH:mm', { timeZone: 'UTC' })}
+                                           <Clock size={10} /> {format(parseISO(apt.start_time), 'HH:mm')}
                                         </span>
                                         {isFinished && <CheckCircle2 size={14} className="text-emerald-500" />}
                                      </div>
