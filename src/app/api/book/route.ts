@@ -31,22 +31,11 @@ export async function POST(request: Request) {
       }
     }
 
-    // Se não existir, vamos criar um perfil básico para esta nova cliente
     if (!customer) {
-       const createTable = 'clientes' // Tabela padrão
-       const { data: newCust, error: createErr } = await supabase
-         .from(createTable)
-         .insert([{ name: name || 'Nova Cliente', whatsapp: cleanWhatsapp, is_blocked: false }])
-         .select()
-         .single()
-       
-       if (!createErr && newCust) {
-          customer = newCust
-       } else {
-          // Fallback final: Se não conseguir criar agora, tenta agendar com um ID nulo ou UUID fake se a tabela permitir
-          // Mas o ideal é ter o customer_id
-          customer = { id: null } // Isso pode falhar dependendo da constraint
-       }
+      return NextResponse.json({ 
+        success: false, 
+        error: 'Acesso Restrito: Seu número não foi encontrado em nossa base VIP. Entre em contato com o salão para realizar seu cadastro.' 
+      }, { status: 403 })
     }
 
     // 2. Criar o agendamento (Motor Híbrido)
@@ -66,7 +55,7 @@ export async function POST(request: Request) {
       const { data, error } = await supabase
         .from(table)
         .insert(aptData)
-        .select('*, servicos(*), services(*)')
+        .select('*') // Removido join problemático
         .maybeSingle()
       
       if (!error && data) {
@@ -76,16 +65,18 @@ export async function POST(request: Request) {
       appointmentError = error
     }
 
-    if (!appointment) throw appointmentError || new Error('Não foi possível gravar o agendamento em nenhuma tabela.')
+    if (!appointment) throw appointmentError || new Error('Não foi possível gravar o agendamento.')
     
-    // Normalizar retorno para o frontend
-    const finalAppointment = {
-       ...appointment,
-       services: appointment.servicos || appointment.services
-    }
+    // Buscar o nome do serviço separadamente para evitar erro de relacionamento
+    const { data: serviceData } = await supabase
+      .from('servicos')
+      .select('name')
+      .eq('id', serviceId)
+      .maybeSingle()
+    
+    const serviceName = serviceData?.name || 'Serviço'
 
     // 3. Disparar WhatsApp via Evolution API (Fase Final)
-    const serviceName = finalAppointment.services?.name || 'Serviço'
     const dateStr = new Date(startTime).toLocaleDateString('pt-BR')
     const timeStr = new Date(startTime).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })
     
@@ -98,7 +89,7 @@ export async function POST(request: Request) {
       console.error('Erro ao enviar mensagem de WhatsApp:', waError)
     }
 
-    return NextResponse.json({ success: true, appointment: finalAppointment })
+    return NextResponse.json({ success: true, appointment: appointment })
   } catch (error: any) {
     console.error('Booking Error:', error)
     return NextResponse.json({ success: false, error: error.message }, { status: 500 })
