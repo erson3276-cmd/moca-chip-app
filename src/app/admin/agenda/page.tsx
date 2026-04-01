@@ -77,8 +77,8 @@ export default function AgendaPage() {
   const start = startOfWeek(currentDate, { weekStartsOn: 1 })
   const end = addDays(start, 6)
   const days = eachDayOfInterval({ start, end })
-  const hours = Array.from({ length: 14 * 2 }, (_, i) => ({
-    h: 8 + Math.floor(i / 2), // Das 08h às 21h
+  const hours = Array.from({ length: 24 * 2 }, (_, i) => ({
+    h: Math.floor(i / 2), // Das 00h às 23h
     m: i % 2 === 0 ? '00' : '30'
   }))
 
@@ -107,7 +107,7 @@ export default function AgendaPage() {
   // Lógica de Renderização de Cartões (Top e Height)
   const getCardPosition = (startTimeStr: string, duration: number) => {
     const d = parseISO(startTimeStr)
-    const hourStart = 8
+    const hourStart = 0
     const minutesFromStartOfDay = (d.getHours() - hourStart) * 60 + d.getMinutes()
     
     const top = (minutesFromStartOfDay / 30) * 64
@@ -281,8 +281,8 @@ export default function AgendaPage() {
             </div>
          </div>
 
-         {/* Time Grid with Scroll */}
-         <div className="h-[800px] overflow-y-auto no-scrollbar relative select-none bg-[url('https://www.transparenttextures.com/patterns/dark-matter.png')]">
+          {/* Time Grid with Scroll */}
+          <div className="h-[1500px] overflow-y-auto no-scrollbar relative select-none bg-[url('https://www.transparenttextures.com/patterns/dark-matter.png')]">
             
             <div className="grid grid-cols-[100px_1fr] relative">
                
