@@ -349,61 +349,61 @@ export default function AgendaPage() {
                            const width = apt.totalTracks > 1 ? (100 / apt.totalTracks) : 100
                            const left = apt.trackIndex * width
 
-                           return (
-                             <div 
-                               key={apt.id}
-                               style={{ ...style, width: `${width}%`, left: `${left}%` }}
-                               className={`absolute p-1 z-30 transition-all duration-300 group/card ${isCancelled ? 'opacity-40 grayscale' : 'hover:z-50 hover:scale-[1.02]'}`}
-                             >
-                               <div className={`h-full w-full rounded-2xl border p-3 flex flex-col justify-between overflow-hidden shadow-xl
-                                  ${isFinished ? 'bg-emerald-500/20 border-emerald-500/30 text-emerald-100 shadow-emerald-500/10' : 
-                                    isCancelled ? 'bg-gray-800/20 border-gray-700 text-gray-500' : 
-                                    'bg-[#5E41FF]/20 border-[#5E41FF]/30 text-white shadow-[#5E41FF]/10'}
-                               `}>
-                                  
-                                  {/* Card Header */}
-                                  <div className="space-y-1">
-                                     <div className="flex items-center justify-between">
-                                        <span className="text-[9px] font-black uppercase tracking-widest flex items-center gap-1 opacity-70">
-                                           <Clock size={10} /> {formatBrasilia(apt.start_time, 'HH:mm')}
-                                        </span>
-                                        {isFinished && <CheckCircle2 size={14} className="text-emerald-500" />}
-                                     </div>
-                                     <h4 className="text-[13px] font-black italic uppercase leading-none tracking-tight truncate">{apt.services?.name || 'Serviço'}</h4>
-                                     <div className="flex items-center gap-1.5 mt-1">
-                                        <div className="w-5 h-5 rounded-full bg-white/10 flex items-center justify-center border border-white/5 scale-90">
-                                           <User size={10} />
-                                        </div>
-                                        <span className="text-[10px] font-bold truncate opacity-80">{apt.customers?.name || 'Cliente'}</span>
-                                     </div>
-                                  </div>
+                            return (
+                              <div 
+                                key={apt.id}
+                                style={{ ...style, width: `${width}%`, left: `${left}%` }}
+                                className={`absolute p-1 z-30 transition-all duration-300 ${isCancelled ? 'opacity-40 grayscale' : ''}`}
+                              >
+                                <div className={`h-full w-full rounded-2xl border p-3 flex flex-col justify-between overflow-hidden shadow-xl min-h-[80px]
+                                   ${isFinished ? 'bg-emerald-500/20 border-emerald-500/30 text-emerald-100 shadow-emerald-500/10' : 
+                                     isCancelled ? 'bg-gray-800/20 border-gray-700 text-gray-500' : 
+                                     'bg-[#5E41FF]/20 border-[#5E41FF]/30 text-white shadow-[#5E41FF]/10'}
+                                `}>
+                                   
+                                   {/* Card Header */}
+                                   <div className="space-y-1">
+                                      <div className="flex items-center justify-between">
+                                         <span className="text-[10px] font-bold flex items-center gap-1">
+                                            <Clock size={12} /> {formatBrasilia(apt.start_time, 'HH:mm')}
+                                         </span>
+                                         {isFinished && <CheckCircle2 size={14} className="text-emerald-500" />}
+                                      </div>
+                                      <h4 className="text-[12px] font-bold truncate">{apt.services?.name || 'Serviço'}</h4>
+                                      <div className="flex items-center gap-1.5">
+                                         <User size={12} className="opacity-70" />
+                                         <span className="text-[11px] truncate opacity-80">{apt.customers?.name || 'Cliente'}</span>
+                                      </div>
+                                   </div>
 
-                                  {/* Card Actions (Premium & High Contrast) */}
-                                  {!isFinished && !isCancelled && (
-                                    <div className="flex items-center gap-2 mt-4 pt-4 border-t border-white/5">
-                                       <button 
-                                         onClick={() => { setSelectedApt(apt); setIsCheckoutOpen(true); }}
-                                         className="flex-1 h-9 bg-white text-black rounded-xl text-[9px] font-black uppercase tracking-widest hover:bg-emerald-400 hover:text-black transition-all flex items-center justify-center gap-1 shadow-lg active:scale-90"
-                                       >
-                                          Checkout
-                                       </button>
-                                       <button 
-                                         onClick={() => handleCancelApt(apt.id)}
-                                         className="w-9 h-9 bg-red-600 text-white rounded-xl flex items-center justify-center hover:bg-red-500 transition-all shadow-lg active:scale-90"
-                                       >
-                                          <X size={16} />
-                                       </button>
-                                       <button 
-                                         onClick={() => handleDeleteApt(apt.id)}
-                                         className="w-9 h-9 bg-white/10 text-gray-400 rounded-xl flex items-center justify-center hover:text-white hover:bg-white/20 transition-all border border-white/5 active:scale-90"
-                                       >
-                                          <Trash2 size={14} />
-                                       </button>
-                                    </div>
-                                  )}
-                               </div>
-                            </div>
-                          )
+                                   {/* Card Actions - SEMPRE VISÍVEIS */}
+                                   {!isFinished && !isCancelled && (
+                                     <div className="flex items-center gap-1.5 mt-3 pt-3 border-t border-white/10">
+                                        <button 
+                                          onClick={() => { setSelectedApt(apt); setIsCheckoutOpen(true); }}
+                                          className="flex-1 h-8 bg-emerald-500 text-white rounded-lg text-[10px] font-bold hover:bg-emerald-400 transition-all flex items-center justify-center gap-1"
+                                        >
+                                           Finalizar
+                                        </button>
+                                        <button 
+                                          onClick={() => handleCancelApt(apt.id)}
+                                          className="w-8 h-8 bg-orange-500 text-white rounded-lg flex items-center justify-center hover:bg-orange-400 transition-all"
+                                          title="Cancelar"
+                                        >
+                                           <X size={14} />
+                                        </button>
+                                        <button 
+                                          onClick={() => handleDeleteApt(apt.id)}
+                                          className="w-8 h-8 bg-red-600 text-white rounded-lg flex items-center justify-center hover:bg-red-500 transition-all"
+                                          title="Excluir"
+                                        >
+                                           <Trash2 size={14} />
+                                        </button>
+                                     </div>
+                                   )}
+                                </div>
+                              </div>
+                            )
                        })}
                     </div>
                   ))}
